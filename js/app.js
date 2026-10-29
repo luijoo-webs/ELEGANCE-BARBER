@@ -1,6 +1,6 @@
 /* Arranque y enrutador (#/ruta). Las rutas privadas se validan aquí y, sobre todo, en RLS. */
 import { CONFIGURED, sb, State, $, esc, safeUrl, loader, emptyState, friendly, loadPublic, loadProfile, isAdmin, waLink } from "./core.js";
-import { viewHome, viewBooking, mountBooking, viewBooked } from "./public.js";
+import { viewHome, mountHome, viewBooking, mountBooking, viewBooked } from "./public.js";
 import { viewAccount, processAuthLink, Recovery } from "./account.js";
 
 const app = $("#app");
@@ -13,35 +13,54 @@ function parse() {
 }
 
 const igHandle = (u) => (String(u || "").match(/instagram\.com\/([^/?#]+)/i) || [])[1] || "";
-const brandMark = () => esc(safeUrl(State.settings.negocio?.logo_url) || "assets/logo-crown-dark.png");
+const customLogo = () => safeUrl(State.settings.negocio?.logo_url);
+const I = {
+  ig: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".8" fill="currentColor"/></svg>`,
+  wa: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.3-3.8A8 8 0 1 1 8 19z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1.2-1.4-2-1-1 .8c-1-.5-1.8-1.3-2.3-2.3l.8-1-1-2z" fill="currentColor" stroke="none"/></svg>`,
+  user: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>`,
+  cal: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>`
+};
 
 function header() {
-  const n = State.settings.negocio || {};
-  const ig = igHandle(n.instagram);
-  const links = [["Precios", "servicios"], ["Barberos", "barberos"],
-    ...(State.gallery.some((g) => g.active) || safeUrl(n.instagram) ? [["Trabajos", "galeria"]] : []),
-    ["Nosotros", "nosotros"], ["Horario", "horario"], ["Contacto", "visitanos"]];
+  const n = State.settings.negocio || {}, r = State.settings.reservas || {};
+  const ig = igHandle(n.instagram), wa = waLink();
+  const links = [["Servicios", "servicios"], ["Barberos", "barberos"], ["Nosotros", "nosotros"],
+    ...(State.gallery.some((g) => g.active) || safeUrl(n.instagram) ? [["Trabajos", "galeria"]] : []), ["Contacto", "visitanos"]];
+  // Franja superior: solo datos reales (reglas de reserva, eslogan, dirección y servicios cargados).
+  const news = ["Reserva en línea", "Eliges tu barbero y tu hora", r.confirmacion_automatica === false ? "Te confirmamos tu cita" : "Confirmación inmediata",
+    "Pagas en la barbería", n.eslogan, n.direccion, ...State.services.filter((s) => s.active).slice(0, 5).map((s) => s.name)].filter(Boolean);
   // El panel admin no se enlaza aquí: se entra directo por #/admin.
   return `<a class="skip" href="#main">Saltar al contenido</a>
-  <header class="top">
-    <div class="top__inner wrap">
-      <button class="menu-btn" type="button" aria-expanded="false" aria-controls="drawer" aria-label="Abrir menú"><span class="menu-btn__i" aria-hidden="true"><i></i><i></i></span><span class="menu-btn__t">Menú</span></button>
-      <a class="brand" href="#/" aria-label="${esc(n.nombre || "Elegance Barber")} — inicio">
-        <img src="${brandMark()}" alt="" class="brand__logo" width="40" height="40">
-        <span class="brand__word">Elegance<small>Barber</small></span></a>
-      <div class="top__actions"><a class="top__acc" href="#/cuenta">${State.user ? "Mi cuenta" : "Ingresar"}</a><a class="btn btn--sm top__cta" href="#/reservar">Reservar</a></div>
-    </div>
-  </header>
+  <div class="masthead">
+    <div class="announce" aria-hidden="true"><div class="announce__track">${[0, 1].map(() => news.map((t) => `<span>${esc(t)}</span>`).join("")).join("")}</div></div>
+    <header class="top">
+      <div class="top__inner">
+        <div class="top__left">
+          <button class="menu-btn" type="button" aria-expanded="false" aria-controls="drawer" aria-label="Abrir menú"><span class="menu-btn__i" aria-hidden="true"><i></i><i></i></span></button>
+          <nav class="top__nav" aria-label="Principal">${links.map(([t, id]) => `<a href="#/inicio/${id}">${t}</a>`).join("")}</nav>
+        </div>
+        <a class="brand" href="#/" aria-label="${esc(n.nombre || "Elegance Barber")} — inicio">
+          <img src="${esc(customLogo() || "assets/logo-crown-dark.png")}" alt="" class="brand__logo${customLogo() ? "" : " is-crown"}" width="40" height="40">
+          <span class="brand__word">Elegance<small>Barber</small></span></a>
+        <div class="top__actions">
+          ${safeUrl(n.instagram) ? `<a class="top__ic hide-sm" href="${esc(n.instagram)}" target="_blank" rel="noopener" aria-label="Instagram">${I.ig}</a>` : ""}
+          ${wa ? `<a class="top__ic hide-sm" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="WhatsApp">${I.wa}</a>` : ""}
+          <a class="top__ic" href="#/cuenta" aria-label="${State.user ? "Mi cuenta" : "Ingresar"}">${I.user}</a>
+          <a class="top__ic top__book" href="#/reservar" aria-label="Reservar cita">${I.cal}<span>Reservar</span></a>
+        </div>
+      </div>
+    </header>
+  </div>
   <div class="drawer" id="drawer" hidden>
     <div class="drawer__scrim" data-drawer-close></div>
     <aside class="drawer__panel" role="dialog" aria-modal="true" aria-label="Menú principal">
       <div class="drawer__head"><span>Menú</span><button type="button" class="drawer__x" data-drawer-close aria-label="Cerrar menú">×</button></div>
-      <nav class="drawer__nav" aria-label="Principal">${links.map(([t, id], i) => `<a href="#/inicio/${id}"><span>${String(i + 1).padStart(2, "0")}</span>${t}</a>`).join("")}</nav>
+      <nav class="drawer__nav" aria-label="Principal">${links.map(([t, id]) => `<a href="#/inicio/${id}">${t}</a>`).join("")}</nav>
       <div class="drawer__foot">
         <a class="btn btn--block" href="#/reservar">Reservar cita</a>
         <a class="link-line" href="#/cuenta">${State.user ? "Mi cuenta" : "Ingresar o crear cuenta"}</a>
         ${n.direccion ? `<p>${esc(n.direccion)}${n.ciudad ? `, ${esc(n.ciudad)}` : ""}</p>` : ""}
-        <p>${ig ? `<a href="${esc(n.instagram)}" target="_blank" rel="noopener">@${esc(ig)}</a>` : ""}${waLink() ? `${ig ? " · " : ""}<a href="${esc(waLink())}" target="_blank" rel="noopener">WhatsApp</a>` : ""}</p>
+        <p>${ig ? `<a href="${esc(n.instagram)}" target="_blank" rel="noopener">@${esc(ig)}</a>` : ""}${wa ? `${ig ? " · " : ""}<a href="${esc(wa)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}</p>
       </div>
     </aside>
   </div>`;
@@ -57,7 +76,8 @@ function footer() {
     <div><h4>Tu cita</h4><ul><li><a href="#/reservar">Reservar</a></li><li><a href="#/cuenta">Mi cuenta</a></li></ul></div>
     <p class="foot__copy">© ${new Date().getFullYear()} ${esc(n.nombre_largo || n.nombre || "Elegance Barber")}${n.eslogan ? ` · ${esc(n.eslogan)}` : ""}</p>
   </div></footer>
-  <a class="fab" href="#/reservar">Reservar cita</a>`;
+  <a class="fab" href="#/reservar">Reservar cita</a>
+  ${waLink() ? `<a class="wa-float" href="${esc(waLink())}" target="_blank" rel="noopener" aria-label="Escríbenos por WhatsApp">${I.wa}</a>` : ""}`;
 }
 
 async function render() {
@@ -68,12 +88,13 @@ async function render() {
   document.body.dataset.route = route || "inicio";
   const panel = route === "admin" && isAdmin();
   document.body.classList.toggle("is-admin", panel);
+  document.body.classList.toggle("has-hero", route === "" || route === "inicio");
   try {
     if (route === "admin") {
       if (!State.user) { location.hash = "#/cuenta?volver=admin"; return; }
       if (!isAdmin()) html = `<section class="wrap narrow">${emptyState("No tienes permisos de administrador.", "Esta sección es solo para el equipo de la barbería.", `<a class="btn" href="#/">Ir al inicio</a>`)}</section>`;
       else { app.innerHTML = loader("Cargando panel…"); const Admin = await import("./admin.js"); if (my !== seq) return; ({ html, mount } = await Admin.view(a || "resumen", b, query)); }
-    } else if (route === "" || route === "inicio") html = viewHome();
+    } else if (route === "" || route === "inicio") { html = viewHome(); mount = mountHome; }
     else if (route === "reservar") { html = viewBooking(query); mount = mountBooking; }
     else if (route === "reserva" && a) { app.innerHTML = header() + loader(); html = State.user ? await viewBooked(a) : ""; if (!State.user) { location.hash = "#/cuenta"; return; } }
     else if (route === "cuenta") {
@@ -110,20 +131,24 @@ function bindHeader() {
   drawer.addEventListener("click", (e) => { if (e.target.closest("[data-drawer-close], a")) toggle(false); });
 }
 
-// Aparición al hacer scroll (.rv / .rv-img) y parallax suave de [data-parallax].
+// Aparición al hacer scroll (.rv / .rv-img / .rv-split), parallax de [data-parallax],
+// texto que se desliza con el scroll [data-scrollx] y cabecera transparente sobre la portada.
 const still = matchMedia("(prefers-reduced-motion: reduce)");
-let io, parallax = [];
+let io, parallax = [], sliders = [];
 function bindMotion() {
   io?.disconnect();
-  const els = [...app.querySelectorAll(".rv, .rv-img")];
-  if (still.matches || !("IntersectionObserver" in window)) { els.forEach((el) => el.classList.add("is-in")); parallax = []; return; }
+  const els = [...app.querySelectorAll(".rv, .rv-img, .rv-split")];
+  onTop();
+  if (still.matches || !("IntersectionObserver" in window)) { els.forEach((el) => el.classList.add("is-in")); parallax = []; sliders = []; return; }
   io = new IntersectionObserver((entries) => entries.forEach((e) => {
     if (e.isIntersecting) { e.target.classList.add("is-in"); io.unobserve(e.target); }
   }), { rootMargin: "0px 0px -8% 0px", threshold: 0.08 });
   els.forEach((el) => io.observe(el));
   parallax = [...app.querySelectorAll("[data-parallax]")];
+  sliders = [...app.querySelectorAll("[data-scrollx]")];
   onScroll();
 }
+function onTop() { document.body.classList.toggle("at-top", scrollY < 40); }
 function onScroll() {
   const vh = innerHeight;
   for (const el of parallax) {
@@ -131,8 +156,13 @@ function onScroll() {
     if (r.bottom < 0 || r.top > vh) continue;
     el.style.transform = `translate3d(0, ${((r.top + r.height / 2 - vh / 2) * -0.15).toFixed(1)}px, 0)`;
   }
+  for (const el of sliders) {
+    const r = el.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > vh) continue;
+    el.style.transform = `translate3d(${((r.top - vh) * 0.35).toFixed(1)}px, 0, 0)`;
+  }
 }
-addEventListener("scroll", () => parallax.length && requestAnimationFrame(onScroll), { passive: true });
+addEventListener("scroll", () => { onTop(); if (parallax.length || sliders.length) requestAnimationFrame(onScroll); }, { passive: true });
 
 function setupScreen(detail = "") {
   app.innerHTML = `<main class="wrap narrow setup"><p class="eyebrow">Configuración pendiente</p><h1>Falta conectar Supabase</h1>

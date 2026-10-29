@@ -14,14 +14,22 @@ const mapUrl = () => safeUrl(N().mapa_url) ||
   (N().direccion ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([N().direccion, N().ciudad].filter(Boolean).join(", "))}` : "");
 
 /* =========================== INICIO ===========================
-   Composición editorial: portada con imagen real (o la corona del logo),
-   franja de datos útiles, la barbería, servicios y precios, barberos,
-   trabajos, horario y contacto. Solo datos reales configurados en el panel. */
+   Portada en paneles con slider, la barbería, catálogo de servicios,
+   barberos, Instagram y visítanos con mapa. Solo datos reales del panel;
+   las fotos de ambiente se reemplazan al subir las propias. */
 const igName = (u) => (String(u || "").match(/instagram\.com\/([^/?#]+)/i) || [])[1] || "";
-// Fotos de ambiente (Unsplash, licencia libre): no son del local. Se reemplazan
-// con las reales desde el panel (portada y foto de "la barbería").
-const STOCK = { hero: "assets/fotos/silla.jpg", corte: "assets/fotos/corte.jpg", tijeras: "assets/fotos/tijeras.jpg", cliente: "assets/fotos/cliente.jpg", afeitado: "assets/fotos/afeitado.jpg" };
-const label = (n, t) => `<p class="label"><span>${n}</span>${t}</p>`;
+// Fotos de ambiente (Unsplash, licencia libre): no son del local.
+const F = (n) => `assets/fotos/${n}.jpg`;
+const STOCK = { afeitado: F("afeitado") };
+const head = (title, id, link = "") => `<header class="lp-head rv"><h2${id ? ` id="${id}"` : ""}>${title}</h2>${link}</header>`;
+const words = (t) => esc(t).split(/\s+/).map((w, k) => `<span class="w"><span style="--i:${k}">${w}</span></span>`).join(" ");
+const ICON = {
+  cal: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>`,
+  user: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>`,
+  check: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16.5 9"/></svg>`,
+  clock: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
+  ig: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".8" fill="currentColor"/></svg>`
+};
 
 export function viewHome() {
   const n = N(), r = R();
@@ -36,58 +44,67 @@ export function viewHome() {
   const heroImg = safeUrl(n.hero_imagen);
   const ig = safeUrl(n.instagram), igH = igName(n.instagram);
   const wa = waLink();
-  const today = weekday(todayYmd());
+  const brand = n.nombre_largo || "The Elegance Of The Barber's";
+  const slogan = n.eslogan || "Tu mejor opción.";
   const minAnt = Number(r.anticipacion_min_minutos);
   const rules = [
     r.cancelacion_min_horas != null && `Cancela${r.reprogramacion_permitida === false ? "" : " o reprograma"} hasta ${r.cancelacion_min_horas} h antes.`,
     r.anticipacion_min_minutos != null && `Reserva con ${minAnt >= 60 && minAnt % 60 === 0 ? `${minAnt / 60} h` : `${minAnt} min`} de anticipación${r.anticipacion_max_dias ? `, hasta ${r.anticipacion_max_dias} días antes` : ""}.`,
     r.confirmacion_automatica === false ? "La barbería confirma tu cita." : "Confirmación inmediata."
   ].filter(Boolean);
-  let i = 0; const num = () => String(++i).padStart(2, "0");
-  const aboutImg = safeUrl(n.about_imagen);
-  const ticker = [n.nombre_largo || "The Elegance Of The Barber's", n.eslogan || "Tu mejor opción", ...services.slice(0, 4).map((s) => s.name), "Reserva en línea"];
-  const rv = (k) => `class="rv" style="--i:${k}"`;
+  const slides = [
+    { kicker: "Barbería", title: ["The Elegance", "of the Barber's"], imgs: [heroImg || F("silla"), F("svc-cortec"), F("afeitado"), F("svc-corte3")] },
+    { kicker: brand, title: [slogan], imgs: [F("svc-fade"), F("cliente"), F("svc-afinar"), F("svc-barba")] }
+  ];
+  const pillars = [
+    [ICON.cal, "Reserva en línea", "Eliges servicio, barbero y hora desde el celular, sin llamadas."],
+    [ICON.user, "Tu barbero", `Reserva con quien prefieras${r.cualquier_barbero === false ? "." : " o con el primero disponible."}`],
+    r.confirmacion_automatica === false ? [ICON.check, "Te confirmamos", "La barbería revisa y confirma tu cita."] : [ICON.check, "Confirmación inmediata", "Tu cita queda lista al instante."],
+    r.cancelacion_min_horas != null && [ICON.clock, "Cambios sin enredos", `Cancela${r.reprogramacion_permitida === false ? "" : " o reprograma"} desde tu cuenta hasta ${r.cancelacion_min_horas} h antes.`]
+  ].filter(Boolean);
+  const igTiles = [...gallery.map((g) => g.image_url), ...["svc-corte3", "svc-fade", "svc-barba", "svc-cortec", "svc-peinado", "corte"].map(F)].slice(0, 6);
+  const BARBER_BG = ["tijeras", "silla", "svc-peine", "svc-guantes"].map(F);
+  const place = [n.direccion, n.ciudad].filter(Boolean).join(", ");
+  const mapQ = place ? (n.ciudad ? place : `${place}, Colombia`) : "";
 
   return `
-  <section class="hero" id="inicio">
-    <div class="hero__media"><img src="${esc(heroImg || STOCK.hero)}" alt="" fetchpriority="high"></div>
-    <div class="hero__content wrap">
-      <img class="hero__mark" src="assets/logo-crown-light.png" alt="" width="59" height="60">
-      <p class="hero__kicker">Barbería${n.ciudad ? ` · ${esc(n.ciudad)}` : ""}</p>
-      <h1 class="hero__title"><span class="ln"><span>The</span></span><span class="ln"><span>Elegance</span></span><span class="ln ln--sub"><span>of the Barber's</span></span></h1>
-      <p class="hero__text">${esc(n.hero_texto || n.hero_titulo || n.eslogan || "Tu mejor opción.")}</p>
-      <div class="hero__cta"><a class="btn btn--light btn--lg" href="#/reservar">Reservar cita</a><a class="link-line link-line--light" href="#/inicio/servicios">Ver servicios</a></div>
-    </div>
-    <span class="hero__scroll" aria-hidden="true">Desliza</span>
+  <section class="hx" id="inicio" aria-roledescription="carrusel" aria-label="Portada">
+    ${slides.map((s, i) => `
+    <div class="hx__slide${i ? "" : " is-on"}" data-slide="${i}" ${i ? "inert" : ""}>
+      <div class="hx__panels" aria-hidden="true">${s.imgs.map((src, k) => `<div class="hx__panel" style="--k:${k}"><img src="${esc(src)}" alt="" ${i ? `loading="lazy"` : k ? "" : `fetchpriority="high"`}></div>`).join("")}</div>
+      <div class="hx__copy wrap">
+        <p class="hx__kicker">${esc(s.kicker)}</p>
+        <${i ? "p" : "h1"} class="hx__title">${s.title.map((t, k) => `<span class="ln${k ? " ln--sub" : ""}"><span>${esc(t)}</span></span>`).join("")}</${i ? "p" : "h1"}>
+        <div class="hx__cta"><a class="btn btn--light btn--lg" href="#/reservar">Reservar cita</a><a class="link-line link-line--light" href="#/inicio/servicios">Ver servicios</a></div>
+      </div>
+    </div>`).join("")}
+    <div class="hx__dots" role="group" aria-label="Elegir portada">${slides.map((_, i) => `<button type="button" data-go="${i}" aria-label="Portada ${i + 1}" ${i ? "" : `aria-current="true"`}></button>`).join("")}</div>
   </section>
-  <div class="ticker" aria-hidden="true"><div class="ticker__track">${[0, 1].map(() => ticker.map((t) => `<span>${esc(t)}</span>`).join("")).join("")}</div></div>
-  <div class="facts"><div class="wrap facts__in">
-    <div><span>Dirección</span><p>${esc(n.direccion || "Por confirmar")}</p></div>
-    <div><span>Hoy</span><p>${hasHours ? (hours[today].length ? esc(hours[today].join(" · ")) : "Cerrado") : "Horario por confirmar"}</p></div>
-    <div><span>Reservas</span><p>En línea, eliges barbero y hora</p></div>
-  </div></div>
 
-  <section class="section intro" id="nosotros" aria-labelledby="t-about">
-    <div class="wrap intro__grid intro__grid--photos">
-      <div class="rv">
-        ${label(num(), "La barbería")}
-        <h2 id="t-about" class="intro__lead">${esc(n.eslogan || "Tu mejor opción.")}</h2>
+  <section class="about" id="nosotros" aria-labelledby="t-about">
+    <div class="about__marquee" aria-hidden="true"><div data-scrollx>${Array(4).fill(`<span>Elegance</span><i>✦</i><span class="o">Barber</span><i>✦</i>`).join("")}</div></div>
+    <div class="wrap about__grid">
+      <div class="about__badge rv" aria-hidden="true">
+        <svg viewBox="0 0 200 200"><defs><path id="ring" d="M100,100 m-80,0 a80,80 0 1,1 160,0 a80,80 0 1,1 -160,0"/></defs>
+          <text><textPath href="#ring" textLength="500">${esc(brand)} ✦ ${esc(slogan)} ✦</textPath></text></svg>
+        <img src="assets/logo-crown-light.png" alt="">
       </div>
-      <div class="intro__body rv" style="--i:1">
-        ${n.filosofia ? n.filosofia.split(/\n{2,}/).map((p) => `<p>${esc(p)}</p>`).join("") : `<p>${esc(n.nombre_largo || "The Elegance Of The Barber's")}. ${n.direccion ? `Te esperamos en ${esc(n.direccion)}.` : ""}</p>`}
-        <a class="link-line" href="#/reservar">Agenda tu visita</a>
-      </div>
-      <div class="intro__photos">
-        <figure class="rv-img"><img src="${esc(aboutImg || STOCK.corte)}" alt="${aboutImg ? "La barbería" : ""}" loading="lazy"></figure>
-        <figure class="rv-img"><img src="${esc(STOCK.tijeras)}" alt="" loading="lazy"></figure>
+      <div class="about__copy">
+        <p class="eyebrow-lp rv">La barbería</p>
+        <h2 id="t-about" class="about__title rv-split">${words(slogan)}</h2>
+        <div class="about__text rv" style="--i:2">
+          ${n.filosofia ? n.filosofia.split(/\n{2,}/).map((p) => `<p>${esc(p)}</p>`).join("") : `<p>${esc(brand)}${n.direccion ? `. Te esperamos en ${esc(n.direccion)}` : ""}.</p>`}
+          <a class="btn btn--light" href="#/reservar">Agenda tu visita</a>
+        </div>
       </div>
     </div>
+    <ul class="wrap pillars">${pillars.map(([ic, t, d], k) => `<li class="pillar rv" style="--i:${k}"><span class="pillar__ic">${ic}</span><h3>${esc(t)}</h3><p>${esc(d)}</p></li>`).join("")}</ul>
   </section>
 
   <section class="section section--paper" id="servicios" aria-labelledby="t-serv">
     <div class="wrap">
-      <header class="sec-head sec-head--split rv"><div>${label(num(), "Servicios")}<h2 id="t-serv">Servicios y precios</h2></div>
-        ${cats.length > 1 ? `<div class="chips" role="group" aria-label="Filtrar servicios"><button type="button" class="chip is-on" data-cat-filter="" aria-pressed="true">Todos</button>${cats.map((c) => `<button type="button" class="chip" data-cat-filter="${c.id}" aria-pressed="false">${esc(c.name)}</button>`).join("")}</div>` : ""}</header>
+      ${head("Servicios y precios", "t-serv", `<a class="lp-link" href="#/reservar">Reservar ahora</a>`)}
+      ${cats.length > 1 ? `<div class="chips rv" role="group" aria-label="Filtrar servicios"><button type="button" class="chip is-on" data-cat-filter="" aria-pressed="true">Todos</button>${cats.map((c) => `<button type="button" class="chip" data-cat-filter="${c.id}" aria-pressed="false">${esc(c.name)}</button>`).join("")}</div>` : ""}
       ${services.length ? `<ul class="catalog">${[...cats.flatMap((c) => services.filter((s) => s.category_id === c.id)), ...uncategorized]
         .map((s, k) => menuItem(s, k, cats.find((c) => c.id === s.category_id)?.name)).join("")}</ul>`
         : `<p class="muted">Estamos actualizando servicios y precios.${wa ? ` <a href="${esc(wa)}" target="_blank" rel="noopener">Pregunta por WhatsApp</a>.` : ""}</p>`}
@@ -95,54 +112,16 @@ export function viewHome() {
   </section>
 
   <section class="section" id="barberos" aria-labelledby="t-barb">
-    <div class="wrap">
-      <header class="sec-head sec-head--split rv"><div>${label(num(), "El equipo")}<h2 id="t-barb">Barberos</h2></div>
-        ${barbers.length ? `<a class="link-line" href="#/reservar">Reservar con tu barbero</a>` : ""}</header>
-      ${barbers.length ? `<div class="team">${barbers.map((b, k) => {
-        const days = barberWorkDays(b.id);
-        return `<a class="person rv" style="--i:${k}" href="#/reservar?barbero=${b.id}">
-          <figure class="person__photo">${safeUrl(b.photo_url) ? `<img src="${esc(b.photo_url)}" alt="${esc(b.name)}" loading="lazy">` : `<span aria-hidden="true">${esc(initials(b.name))}</span>`}</figure>
-          <h3>${esc(b.name)}</h3>
-          <p>${b.specialties?.length ? esc(b.specialties.join(" · ")) : days.length ? esc(days.join(" · ")) : "Horario por confirmar"}</p></a>`;
-      }).join("")}</div>` : `<p class="muted">Pronto presentaremos a nuestro equipo.</p>`}
-    </div>
-  </section>
-
-  ${gallery.length || ig ? `
-  <section class="section section--dark" id="galeria" aria-labelledby="t-gal">
-    <div class="wrap">
-      <header class="sec-head sec-head--split rv"><div>${label(num(), "Trabajos")}<h2 id="t-gal">Cortes recientes</h2></div>
-        ${ig ? `<a class="link-line link-line--light" href="${esc(n.instagram)}" target="_blank" rel="noopener">${igH ? `@${esc(igH)}` : "Instagram"}</a>` : ""}</header>
-      ${gallery.length ? `<div class="gallery">${gallery.map((g, k) => `<figure ${rv(k % 4)}><img src="${esc(g.image_url)}" alt="${esc(g.caption || "Trabajo de Elegance Barber")}" loading="lazy">${g.caption ? `<figcaption>${esc(g.caption)}</figcaption>` : ""}</figure>`).join("")}</div>`
-        : `<p class="gallery__empty">Publicamos nuestros cortes en Instagram. <a href="${esc(n.instagram)}" target="_blank" rel="noopener">Ver perfil${igH ? ` @${esc(igH)}` : ""}</a></p>`}
-    </div>
-  </section>` : ""}
-
-  <div class="band" aria-hidden="true">
-    <div class="band__bg" data-parallax><img src="${esc(STOCK.cliente)}" alt="" loading="lazy"></div>
-    <p class="rv">${esc(n.eslogan || "Tu mejor opción.")}<small>${esc(n.nombre_largo || "The Elegance Of The Barber's")}</small></p>
-  </div>
-
-  <section class="section" id="horario" aria-labelledby="t-hours">
-    <div class="wrap visit">
-      <div class="rv">
-        ${label(num(), "Horario")}
-        <h2 id="t-hours">Horario de atención</h2>
-        ${hasHours ? `<dl class="hours">${order.map((d) => `<div class="${d === today ? "is-today" : ""}"><dt>${DAYS[d]}${d === today ? " <small>hoy</small>" : ""}</dt><dd>${hours[d].length ? esc(hours[d].join(" · ")) : "Cerrado"}</dd></div>`).join("")}</dl>`
-          : `<p class="muted">Horario por confirmar.</p>`}
-      </div>
-      <div id="visitanos" class="rv" style="--i:1">
-        ${label(num(), "Contacto")}
-        <h2>Visítanos</h2>
-        <ul class="contact">
-          <li><span>Dirección</span><p>${n.direccion ? `${esc(n.direccion)}${n.ciudad ? `, ${esc(n.ciudad)}` : ""}` : "Por confirmar"}</p>${mapUrl() ? `<a href="${esc(mapUrl())}" target="_blank" rel="noopener">Cómo llegar</a>` : ""}</li>
-          ${wa ? `<li><span>WhatsApp</span><p>Escríbenos para cualquier duda</p><a href="${esc(wa)}" target="_blank" rel="noopener">Abrir chat</a></li>` : ""}
-          ${n.telefono ? `<li><span>Teléfono</span><p>${esc(n.telefono)}</p><a href="tel:${esc(String(n.telefono).replace(/[^\d+]/g, ""))}">Llamar</a></li>` : ""}
-          ${ig ? `<li><span>Instagram</span><p>${igH ? `@${esc(igH)}` : "Síguenos"}</p><a href="${esc(n.instagram)}" target="_blank" rel="noopener">Seguir</a></li>` : ""}
-          ${n.correo ? `<li><span>Correo</span><p>${esc(n.correo)}</p><a href="mailto:${esc(n.correo)}">Escribir</a></li>` : ""}
-        </ul>
-      </div>
-    </div>
+    <div class="wrap">${head("Nuestros barberos", "t-barb", barbers.length ? `<a class="lp-link" href="#/reservar">Reservar con tu barbero</a>` : "")}</div>
+    ${barbers.length ? `<div class="crew" tabindex="0" aria-label="Barberos">${barbers.map((b, k) => {
+      const photo = safeUrl(b.photo_url);
+      const days = barberWorkDays(b.id);
+      return `<article class="crew__card rv" style="--i:${k % 4}">
+        <img src="${esc(photo || BARBER_BG[k % BARBER_BG.length])}" alt="${photo ? esc(b.name) : ""}" loading="lazy"${photo ? "" : ` class="is-stock"`}>
+        <div class="crew__info"><h3>${esc(b.name)}</h3><p>${b.specialties?.length ? esc(b.specialties.join(" · ")) : days.length ? esc(days.join(" · ")) : ""}</p>
+          <a class="crew__btn" href="#/reservar?barbero=${b.id}">Reservar</a></div>
+      </article>`;
+    }).join("")}</div>` : `<div class="wrap"><p class="muted">Pronto presentaremos a nuestro equipo.</p></div>`}
   </section>
 
   <section class="cta" aria-labelledby="t-book">
@@ -152,24 +131,85 @@ export function viewHome() {
       <ul>${rules.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
       <a class="btn btn--light btn--lg" href="#/reservar">Reservar ahora</a>
     </div>
+  </section>
+
+  ${ig || gallery.length ? `
+  <section class="insta" id="galeria" aria-labelledby="t-ig">
+    <div class="wrap">${head(igH ? `@${esc(igH)}` : "Nuestros trabajos", "t-ig", ig ? `<a class="lp-link" href="${esc(n.instagram)}" target="_blank" rel="noopener">Síguenos en Instagram</a>` : "")}</div>
+    <div class="insta__grid">${igTiles.map((src, k) => `<a class="insta__tile rv" style="--i:${k}" ${ig ? `href="${esc(n.instagram)}" target="_blank" rel="noopener"` : `href="#/reservar"`} aria-label="${ig ? "Ver Instagram" : "Reservar"}"><img src="${esc(src)}" alt="" loading="lazy"><span>${ICON.ig}</span></a>`).join("")}</div>
+  </section>` : ""}
+
+  <section class="visit" id="visitanos" aria-labelledby="t-visit">
+    <div class="wrap visit__grid">
+      <div class="visit__info">
+        ${head("Visítanos", "t-visit")}
+        <div class="visit__item rv"><span>Dirección</span><p>${place ? esc(place) : "Por confirmar"}</p>${mapQ ? `<button type="button" class="link-line" data-route-open>Cómo llegar</button>` : ""}</div>
+        <div class="visit__item rv" style="--i:1"><span>Reservas</span><p>En línea: eliges servicio, barbero y hora.</p><a class="link-line" href="#/reservar">Reservar</a></div>
+        <div class="visit__item rv" style="--i:2" id="horario"><span>Horario</span>
+          ${hasHours ? `<dl class="hours">${order.map((d) => `<div><dt>${DAYS[d]}</dt><dd>${hours[d].length ? esc(hours[d].join(" · ")) : "Cerrado"}</dd></div>`).join("")}</dl>` : `<p>Por confirmar</p>`}</div>
+        <div class="visit__links rv" style="--i:3">
+          ${wa ? `<a href="${esc(wa)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}
+          ${ig ? `<a href="${esc(n.instagram)}" target="_blank" rel="noopener">Instagram</a>` : ""}
+          ${n.telefono ? `<a href="tel:${esc(String(n.telefono).replace(/[^\d+]/g, ""))}">${esc(n.telefono)}</a>` : ""}
+          ${n.correo ? `<a href="mailto:${esc(n.correo)}">${esc(n.correo)}</a>` : ""}
+        </div>
+      </div>
+      ${mapQ ? `<div class="visit__map rv">
+        <iframe title="Mapa: ${esc(place)}" src="https://maps.google.com/maps?q=${encodeURIComponent(mapQ)}&z=16&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+        <button type="button" class="visit__go" data-route-open><span>Cómo llegar</span><small>Google Maps o Waze</small></button>
+      </div>
+      <dialog class="route-dlg" id="routeDlg" aria-labelledby="t-route">
+        <p class="eyebrow-lp">Cómo llegar</p>
+        <h3 id="t-route">${esc(place)}</h3>
+        <div class="route-dlg__opts">
+          <a class="route-opt" href="${esc(mapUrl() || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQ)}`)}" target="_blank" rel="noopener"><b>Google Maps</b><small>Abrir ruta</small></a>
+          <a class="route-opt" href="https://waze.com/ul?q=${encodeURIComponent(mapQ)}&navigate=yes" target="_blank" rel="noopener"><b>Waze</b><small>Abrir ruta</small></a>
+        </div>
+        <button type="button" class="link-line" data-route-close>Cerrar</button>
+      </dialog>` : ""}
+    </div>
   </section>`;
 }
 
-// Filtro por categoría del catálogo (delegado: el inicio se vuelve a pintar en cada navegación).
+// Slider de la portada: cambia cada 6 s, se pausa al pasar el mouse o con el foco.
+export function mountHome() {
+  const hx = $(".hx");
+  if (!hx) return;
+  const slides = $$(".hx__slide", hx), dots = $$("[data-go]", hx);
+  let cur = 0, timer = null;
+  const go = (i) => {
+    cur = (i + slides.length) % slides.length;
+    slides.forEach((s, k) => { s.classList.toggle("is-on", k === cur); s.inert = k !== cur; });
+    dots.forEach((d, k) => d.toggleAttribute("aria-current", k === cur));
+  };
+  const play = () => { clearInterval(timer); if (!matchMedia("(prefers-reduced-motion: reduce)").matches) timer = setInterval(() => document.body.contains(hx) ? go(cur + 1) : clearInterval(timer), 6000); };
+  dots.forEach((d) => d.addEventListener("click", () => { go(+d.dataset.go); play(); }));
+  hx.addEventListener("mouseenter", () => clearInterval(timer));
+  hx.addEventListener("mouseleave", play);
+  hx.addEventListener("focusin", () => clearInterval(timer));
+  play();
+}
+
+// Filtro del catálogo y elección de ruta (delegados: el inicio se vuelve a pintar en cada navegación).
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-cat-filter]");
-  if (!b) return;
-  $$("[data-cat-filter]").forEach((x) => { x.classList.toggle("is-on", x === b); x.setAttribute("aria-pressed", x === b); });
-  $$(".catalog > li").forEach((li) => { li.hidden = !!b.dataset.catFilter && li.dataset.cat !== b.dataset.catFilter; });
+  if (b) {
+    $$("[data-cat-filter]").forEach((x) => { x.classList.toggle("is-on", x === b); x.setAttribute("aria-pressed", x === b); });
+    $$(".catalog > li").forEach((li) => { li.hidden = !!b.dataset.catFilter && li.dataset.cat !== b.dataset.catFilter; });
+  }
+  if (e.target.closest("[data-route-open]")) $("#routeDlg")?.showModal();
+  const dlg = $("#routeDlg");
+  if (dlg?.open && (e.target.closest("[data-route-close]") || e.target === dlg || e.target.closest(".route-opt"))) dlg.close();
 });
 
 // Foto del servicio: la subida en el panel o, si no hay, una de ambiente según el nombre.
-const SVC_STOCK = ["svc-corte3", "svc-guantes", "svc-peinado", "svc-fade"];
+const SVC_STOCK = ["svc-corte3", "svc-guantes", "svc-peinado", "svc-cortec", "svc-afinar", "svc-peine"];
 function svcPhoto(s) {
   if (safeUrl(s.image_url)) return s.image_url;
   const t = `${s.name} ${s.description || ""}`.toLowerCase();
-  const f = /barba|afeit|perfil/.test(t) ? "svc-barba" : /diseñ|line|ceja|fade|degrad/.test(t) ? "svc-fade" : SVC_STOCK[[...String(s.id)].reduce((a, c) => a + c.charCodeAt(0), 0) % SVC_STOCK.length];
-  return `assets/fotos/${f}.jpg`;
+  const f = /amino/.test(t) ? "svc-peine" : /querat|keratin|tratam|hidrat|lavad/.test(t) ? "svc-tratamiento" : /barba|afeit|perfil/.test(t) ? "svc-barba"
+    : /diseñ|line|ceja|fade|degrad/.test(t) ? "svc-fade" : SVC_STOCK[[...String(s.id)].reduce((a, c) => a + c.charCodeAt(0), 0) % SVC_STOCK.length];
+  return F(f);
 }
 
 function menuItem(s, k = 0, cat = "") {

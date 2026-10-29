@@ -202,4 +202,12 @@ await fails(as(null, `select * from finance_entries`), "permission denied");
 assert.equal((await as(U.admin, `select * from finance_entries`)).length, 2);
 ok("finanzas: solo el admin las ve y edita; montos deben ser positivos");
 
+console.log("Migraciones 04 y 05");
+const mig = ["04_duracion_30.sql", "05_servicios.sql"].map((f) => readFileSync(new URL(`../supabase/${f}`, import.meta.url), "utf8")).join(";\n");
+await db.exec(mig); await db.exec(mig);
+const nuevos = await db.query(`select name, duration_min, price from services where name in ('Corte full', 'Keratina', 'Aminoácidos') order by sort_order`);
+assert.deepEqual(nuevos.rows.map((r) => [r.name, r.duration_min, r.price]), [["Corte full", 30, null], ["Keratina", 30, null], ["Aminoácidos", 30, null]]);
+assert.equal((await db.query(`select value->>'intervalo_min' v from settings where key = 'reservas'`)).rows[0].v, "30");
+ok("04/05 son re-ejecutables: 3 servicios nuevos de 30 min, sin duplicar, intervalo 30");
+
 console.log(`\n${passed} pruebas OK`);

@@ -10,7 +10,7 @@ Mismo modelo de despliegue que La Percha: sitio estático (sin compilación) →
 | `index.html`, `css/styles.css`, `assets/` | Página, estilos (editorial sobrio: negro, blanco cálido, grises y un acento latón discreto; panel admin claro) y logo real (`logo.jpg`, `logo-mark.jpg`, `hero-crown.jpg`, `favicon.png`). |
 | `js/config.js` | **Aquí van la URL y la clave pública (anon) de Supabase.** Nada más. |
 | `js/core.js` | Conexión, fechas en `America/Bogota`, mensajes de error en español, subida de imágenes. |
-| `js/app.js` | Enrutador, encabezado con menú lateral (Precios, Barberos, Trabajos, Nosotros, Horario, Contacto) y pie. El panel no se enlaza en la navegación pública: se entra por `#/admin`. |
+| `js/app.js` | Enrutador, franja de avisos arriba, encabezado (enlaces a la izquierda, logo al centro, iconos a la derecha; menú lateral en celular), botón flotante de WhatsApp y pie. El panel no se enlaza en la navegación pública: se entra por `#/admin`. |
 | `js/public.js` | Inicio, flujo de reserva por pasos (servicio → barbero → fecha y hora → confirmar) y calendario semanal. |
 | `js/account.js` | Registro, inicio de sesión, recuperación, perfil, mis citas, cancelar/reprogramar. |
 | `js/admin.js` | Panel `#/admin`: resumen, agenda, citas, servicios, barberos, clientes, horarios, configuración, estadísticas (ingresos/gastos) y registro de cambios. |
@@ -18,6 +18,7 @@ Mismo modelo de despliegue que La Percha: sitio estático (sin compilación) →
 | `supabase/02_storage.sql` | Bucket `media` para fotos (lectura pública, escritura solo admin). |
 | `supabase/03_finanzas.sql` | Tabla `finance_entries` (ingresos y gastos, solo admin) y función `admin_delete_appointment` (borra solo citas canceladas). |
 | `supabase/04_duracion_30.sql` | Cada corte dura 30 min: duración por defecto e intervalo de horas en 30 min (solo para bases creadas antes del cambio). |
+| `supabase/05_servicios.sql` | Agrega Corte full (Cortes), Keratina y Aminoácidos (Tratamientos), 30 min, precio por definir. Re-ejecutable. |
 | `supabase/correos/` | Plantillas de los correos de Auth. |
 | `tests/` | Pruebas del SQL y servidor local de desarrollo (no es parte del sitio). |
 
@@ -31,7 +32,13 @@ Tomado del Instagram **@elegancebarberr** (perfil público, sin iniciar sesión)
 
 **No se inventó nada más.** Pendiente de que lo entregues (todo se carga desde el panel, sin tocar código):
 - Fotos reales: portada, local, barberos y trabajos. No descargué fotos de Instagram.
-  Mientras tanto la portada, “La barbería”, la franja del eslogan y la franja final “Reserva tu próxima cita” y las tarjetas de servicios sin foto propia (catálogo y reserva) usan **fotos de ambiente de barbería** (Unsplash, licencia libre, en `assets/fotos/`): no son del local. Al subir *Imagen de portada* y *Foto de la barbería* en Admin → Configuración, las reales las reemplazan. Las secciones Barberos y Trabajos nunca muestran fotos genéricas.
+  Mientras tanto la web usa **fotos de ambiente de barbería** (Unsplash, licencia libre, en `assets/fotos/`): no son del local ni del equipo. Dónde y cómo se reemplazan:
+  - Portada (paneles): la *Imagen de portada* de Admin → Configuración ocupa el primer panel.
+  - Servicios: la foto de cada servicio (Admin → Servicios).
+  - Barberos: la foto de cada barbero (Admin → Barberos); sin foto se ve una imagen de ambiente en gris, nunca un retrato.
+  - Franja de Instagram: las fotos de Galería (Admin → Configuración) van primero; las de ambiente solo completan hasta 6.
+  - Franja “Reserva tu próxima cita”: imagen fija de ambiente.
+- **Mapa**: se busca por la dirección. Como la dirección no dice la ciudad, completa *Ciudad* (o *Enlace de Google Maps*) en Admin → Configuración para que el mapa y las rutas de Google Maps/Waze apunten al lugar exacto.
 - Ciudad (la dirección no la indica), teléfono, correo, enlace de Google Maps.
 - Servicios, duraciones y **precios** (sin precio se muestra “Precio por confirmar”).
 - Barberos (nombres, fotos, especialidades) y horarios de atención.
