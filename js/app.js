@@ -13,7 +13,7 @@ function parse() {
 }
 
 const igHandle = (u) => (String(u || "").match(/instagram\.com\/([^/?#]+)/i) || [])[1] || "";
-const brandMark = () => esc(safeUrl(State.settings.negocio?.logo_url) || "assets/logo-mark.jpg");
+const brandMark = () => esc(safeUrl(State.settings.negocio?.logo_url) || "assets/logo-crown-dark.png");
 
 function header() {
   const n = State.settings.negocio || {};

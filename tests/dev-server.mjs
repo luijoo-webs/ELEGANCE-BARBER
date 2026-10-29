@@ -228,9 +228,9 @@ createServer(async (req, res) => {
   await db.exec(`
     insert into service_categories (name, sort_order) values ('Cortes (prueba)', 1), ('Barba (prueba)', 2);
     insert into services (category_id, name, description, duration_min, price, sort_order)
-      select id, 'Corte clásico (prueba)', 'Servicio ficticio para probar la interfaz.', 45, 30000, 1 from service_categories where name='Cortes (prueba)';
+      select id, 'Corte clásico (prueba)', 'Servicio ficticio para probar la interfaz.', 30, 30000, 1 from service_categories where name='Cortes (prueba)';
     insert into services (category_id, name, description, duration_min, price, sort_order)
-      select id, 'Corte + diseño (prueba)', 'Precio sin definir a propósito.', 60, null, 2 from service_categories where name='Cortes (prueba)';
+      select id, 'Corte + diseño (prueba)', 'Precio sin definir a propósito.', 30, null, 2 from service_categories where name='Cortes (prueba)';
     insert into services (category_id, name, duration_min, price, sort_order)
       select id, 'Perfilado de barba (prueba)', 30, 15000, 3 from service_categories where name='Barba (prueba)';
     insert into barbers (name, specialties, sort_order) values ('Barbero A (prueba)', '{fade,barba}', 1), ('Barbero B (prueba)', '{diseño}', 2);

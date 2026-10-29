@@ -35,7 +35,7 @@ const ICON = {
 const ico = (k) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
 
 function shell(sec, title, actions, body) {
-  const logo = safeUrl(State.settings.negocio?.logo_url) || "assets/logo-mark.jpg";
+  const logo = safeUrl(State.settings.negocio?.logo_url) || "assets/logo-crown-light.png";
   return `<div class="adm">
     <aside class="adm__side">
       <a class="adm__brand" href="#/admin" aria-label="Panel — inicio"><img src="${esc(logo)}" alt=""><span><b>Elegance</b><small>Panel admin</small></span></a>
@@ -502,7 +502,7 @@ function serviceEditor(s = null) {
       <label class="field"><span>Descripción</span><textarea name="description" rows="3" maxlength="600">${esc(s?.description)}</textarea></label>
       <div class="grid-2">
         <label class="field"><span>Categoría</span><select name="category_id"><option value="">Sin categoría</option>${State.categories.map((c) => `<option value="${c.id}" ${c.id === s?.category_id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
-        <label class="field"><span>Duración (minutos)</span><input type="number" name="duration_min" required min="5" max="480" step="5" value="${s?.duration_min ?? ""}"></label>
+        <label class="field"><span>Duración (minutos)</span><input type="number" name="duration_min" required min="5" max="480" step="5" value="${s?.duration_min ?? 30}"></label>
         <label class="field"><span>Precio en COP (vacío = por definir)</span><input type="number" name="price" min="0" step="100" value="${s?.price ?? ""}" inputmode="numeric"></label>
         <label class="field"><span>Orden</span><input type="number" name="sort_order" value="${s?.sort_order ?? 0}"></label>
       </div>
@@ -676,7 +676,7 @@ async function vHorarios() {
     <div class="card" style="margin-top:14px"><div class="row" style="justify-content:space-between"><h2>Cierres, festivos y días no laborables</h2><button class="btn btn--sm" id="addClose" type="button">Agregar cierre</button></div>
       <div id="offs">${offsTable(offs)}</div></div>
     <div class="card" style="margin-top:14px"><h2>Reglas de reserva vigentes</h2>
-      <dl class="kv"><dt>Intervalo entre horas de inicio</dt><dd>${r.intervalo_min ?? 15} min</dd><dt>Anticipación mínima</dt><dd>${r.anticipacion_min_minutos ?? 60} min</dd>
+      <dl class="kv"><dt>Intervalo entre horas de inicio</dt><dd>${r.intervalo_min ?? 30} min</dd><dt>Anticipación mínima</dt><dd>${r.anticipacion_min_minutos ?? 60} min</dd>
       <dt>Anticipación máxima</dt><dd>${r.anticipacion_max_dias ?? 30} días</dd><dt>Cancelar/reprogramar hasta</dt><dd>${r.cancelacion_min_horas ?? 2} h antes</dd></dl>
       <p style="margin-top:12px"><a class="link-arrow" href="#/admin/configuracion/reservas">Cambiar reglas</a></p></div>`);
   const mount = () => {
@@ -786,7 +786,7 @@ async function vConfig(tab = "negocio") {
     <label class="field" style="max-width:220px"><span>Color de acento</span><input type="color" name="color_acento" value="${esc(/^#[0-9a-f]{6}$/i.test(n.color_acento || "") ? n.color_acento : "#141312")}"></label>
     <button class="btn" type="submit" data-busy="Guardando…">Guardar</button><p class="form-msg" id="cfgMsg"></p></form>`;
   if (tab === "reservas") body = `<form class="form card" id="cfgForm" data-key="reservas">
-    <div class="grid-2">${num("intervalo_min", "Intervalo entre horas de inicio (min)", 5, 120, 15)}${num("anticipacion_min_minutos", "Anticipación mínima (minutos)", 0, 10080, 60)}
+    <div class="grid-2">${num("intervalo_min", "Intervalo entre horas de inicio (min)", 5, 120, 30)}${num("anticipacion_min_minutos", "Anticipación mínima (minutos)", 0, 10080, 60)}
       ${num("anticipacion_max_dias", "Anticipación máxima (días)", 1, 365, 30)}${num("cancelacion_min_horas", "Cancelar/reprogramar hasta (horas antes)", 0, 168, 2)}
       ${num("max_reservas_activas", "Máx. citas activas por cliente", 1, 20, 3)}${num("pendiente_horas", "Horas para confirmar una pendiente", 1, 168, 12)}</div>
     <label class="check"><input type="checkbox" name="confirmacion_automatica" ${r.confirmacion_automatica === false ? "" : "checked"}> Confirmar automáticamente las reservas web (si se desactiva, quedan “pendientes” y bloquean el horario solo durante las horas indicadas)</label>

@@ -17,6 +17,7 @@ Mismo modelo de despliegue que La Percha: sitio estático (sin compilación) →
 | `supabase/01_esquema.sql` | Tablas, restricciones, funciones de reserva, RLS y auditoría. |
 | `supabase/02_storage.sql` | Bucket `media` para fotos (lectura pública, escritura solo admin). |
 | `supabase/03_finanzas.sql` | Tabla `finance_entries` (ingresos y gastos, solo admin) y función `admin_delete_appointment` (borra solo citas canceladas). |
+| `supabase/04_duracion_30.sql` | Cada corte dura 30 min: duración por defecto e intervalo de horas en 30 min (solo para bases creadas antes del cambio). |
 | `supabase/correos/` | Plantillas de los correos de Auth. |
 | `tests/` | Pruebas del SQL y servidor local de desarrollo (no es parte del sitio). |
 
@@ -30,7 +31,7 @@ Tomado del Instagram **@elegancebarberr** (perfil público, sin iniciar sesión)
 
 **No se inventó nada más.** Pendiente de que lo entregues (todo se carga desde el panel, sin tocar código):
 - Fotos reales: portada, local, barberos y trabajos. No descargué fotos de Instagram.
-  Mientras tanto la portada, “La barbería”, la franja del eslogan y la franja final “Reserva tu próxima cita” usan **fotos de ambiente de barbería** (Unsplash, licencia libre, en `assets/fotos/`): no son del local. Al subir *Imagen de portada* y *Foto de la barbería* en Admin → Configuración, las reales las reemplazan. Las secciones Barberos y Trabajos nunca muestran fotos genéricas.
+  Mientras tanto la portada, “La barbería”, la franja del eslogan y la franja final “Reserva tu próxima cita” y las tarjetas de servicios sin foto propia (catálogo y reserva) usan **fotos de ambiente de barbería** (Unsplash, licencia libre, en `assets/fotos/`): no son del local. Al subir *Imagen de portada* y *Foto de la barbería* en Admin → Configuración, las reales las reemplazan. Las secciones Barberos y Trabajos nunca muestran fotos genéricas.
 - Ciudad (la dirección no la indica), teléfono, correo, enlace de Google Maps.
 - Servicios, duraciones y **precios** (sin precio se muestra “Precio por confirmar”).
 - Barberos (nombres, fotos, especialidades) y horarios de atención.
@@ -73,7 +74,7 @@ Mientras no haya horario general, servicios y barberos activos, la web muestra �
 - **Finanzas** (Admin → Estadísticas): ingresos y gastos se registran a mano (descripción, categoría, valor, fecha). El balance solo se muestra cuando hay ingresos registrados: una cita reservada o completada **no** es dinero recibido (la web no cobra en línea). El “valor estimado” de citas completadas es solo una referencia según el precio de la cita.
 - Zona horaria: todo se calcula en `America/Bogota` (UTC−5, sin horario de verano).
 
-Reglas por defecto (cámbialas en Admin → Configuración → Reglas de reserva): intervalo 15 min, anticipación mínima 60 min, máxima 30 días, cancelación hasta 2 h antes, 3 citas activas por cliente, “cualquier barbero” activado.
+Reglas por defecto (cámbialas en Admin → Configuración → Reglas de reserva): cada corte dura 30 min (duración por defecto de un servicio nuevo), intervalo 30 min, anticipación mínima 60 min, máxima 30 días, cancelación hasta 2 h antes, 3 citas activas por cliente, “cualquier barbero” activado.
 
 ## 5. Roles y seguridad
 

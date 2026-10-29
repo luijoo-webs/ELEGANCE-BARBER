@@ -52,7 +52,7 @@ export function viewHome() {
   <section class="hero" id="inicio">
     <div class="hero__media"><img src="${esc(heroImg || STOCK.hero)}" alt="" fetchpriority="high"></div>
     <div class="hero__content wrap">
-      <img class="hero__mark" src="assets/logo-mark.jpg" alt="" width="64" height="64">
+      <img class="hero__mark" src="assets/logo-crown-light.png" alt="" width="59" height="60">
       <p class="hero__kicker">Barbería${n.ciudad ? ` · ${esc(n.ciudad)}` : ""}</p>
       <h1 class="hero__title"><span class="ln"><span>The</span></span><span class="ln"><span>Elegance</span></span><span class="ln ln--sub"><span>of the Barber's</span></span></h1>
       <p class="hero__text">${esc(n.hero_texto || n.hero_titulo || n.eslogan || "Tu mejor opción.")}</p>
@@ -86,10 +86,10 @@ export function viewHome() {
 
   <section class="section section--paper" id="servicios" aria-labelledby="t-serv">
     <div class="wrap">
-      <header class="sec-head rv">${label(num(), "Servicios")}<h2 id="t-serv">Servicios y precios</h2></header>
-      ${services.length ? [...cats.map((c) => [c.name, services.filter((s) => s.category_id === c.id)]),
-        ...(uncategorized.length ? [[cats.length ? "Otros" : "", uncategorized]] : [])]
-        .map(([name, list]) => `${name ? `<h3 class="cat-title">${esc(name)}</h3>` : ""}<ul class="menu">${list.map((s, k) => menuItem(s, k)).join("")}</ul>`).join("")
+      <header class="sec-head sec-head--split rv"><div>${label(num(), "Servicios")}<h2 id="t-serv">Servicios y precios</h2></div>
+        ${cats.length > 1 ? `<div class="chips" role="group" aria-label="Filtrar servicios"><button type="button" class="chip is-on" data-cat-filter="" aria-pressed="true">Todos</button>${cats.map((c) => `<button type="button" class="chip" data-cat-filter="${c.id}" aria-pressed="false">${esc(c.name)}</button>`).join("")}</div>` : ""}</header>
+      ${services.length ? `<ul class="catalog">${[...cats.flatMap((c) => services.filter((s) => s.category_id === c.id)), ...uncategorized]
+        .map((s, k) => menuItem(s, k, cats.find((c) => c.id === s.category_id)?.name)).join("")}</ul>`
         : `<p class="muted">Estamos actualizando servicios y precios.${wa ? ` <a href="${esc(wa)}" target="_blank" rel="noopener">Pregunta por WhatsApp</a>.` : ""}</p>`}
     </div>
   </section>
@@ -155,11 +155,31 @@ export function viewHome() {
   </section>`;
 }
 
-function menuItem(s, k = 0) {
-  return `<li class="rv" style="--i:${k % 6}"><a class="menu__item" href="#/reservar?servicio=${s.id}">
-    <span class="menu__name">${esc(s.name)}${s.description ? `<small>${esc(s.description)}</small>` : ""}</span>
-    <span class="menu__dur">${durLabel(s.duration_min)}</span>
-    <span class="menu__price${s.price == null ? " is-pending" : ""}">${priceLabel(s.price)}</span></a></li>`;
+// Filtro por categoría del catálogo (delegado: el inicio se vuelve a pintar en cada navegación).
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-cat-filter]");
+  if (!b) return;
+  $$("[data-cat-filter]").forEach((x) => { x.classList.toggle("is-on", x === b); x.setAttribute("aria-pressed", x === b); });
+  $$(".catalog > li").forEach((li) => { li.hidden = !!b.dataset.catFilter && li.dataset.cat !== b.dataset.catFilter; });
+});
+
+// Foto del servicio: la subida en el panel o, si no hay, una de ambiente según el nombre.
+const SVC_STOCK = ["svc-corte3", "svc-guantes", "svc-peinado", "svc-fade"];
+function svcPhoto(s) {
+  if (safeUrl(s.image_url)) return s.image_url;
+  const t = `${s.name} ${s.description || ""}`.toLowerCase();
+  const f = /barba|afeit|perfil/.test(t) ? "svc-barba" : /diseñ|line|ceja|fade|degrad/.test(t) ? "svc-fade" : SVC_STOCK[[...String(s.id)].reduce((a, c) => a + c.charCodeAt(0), 0) % SVC_STOCK.length];
+  return `assets/fotos/${f}.jpg`;
+}
+
+function menuItem(s, k = 0, cat = "") {
+  return `<li class="rv" style="--i:${k % 4}" data-cat="${s.category_id || ""}"><a class="cat-card" href="#/reservar?servicio=${s.id}">
+    <figure class="cat-card__img"><img src="${esc(svcPhoto(s))}" alt="" loading="lazy">${cat ? `<span class="cat-card__tag">${esc(cat)}</span>` : ""}<span class="cat-card__dur">${durLabel(s.duration_min)}</span></figure>
+    <div class="cat-card__body">
+      <h4>${esc(s.name)}</h4>
+      ${s.description ? `<p>${esc(s.description)}</p>` : ""}
+      <div class="cat-card__foot"><span class="cat-card__price${s.price == null ? " is-pending" : ""}">${priceLabel(s.price)}</span><span class="cat-card__go">Reservar</span></div>
+    </div></a></li>`;
 }
 
 /* ===================== SELECTOR SEMANAL DE HORARIOS =====================
@@ -309,7 +329,7 @@ export function mountBooking() {
     steps.innerHTML =
       step(1, () => `<div class="svc-cards">${services.map((s) => `
         <button type="button" class="svc-card${s.id === b.serviceId ? " is-sel" : ""}" data-svc="${s.id}" aria-pressed="${s.id === b.serviceId}">
-          ${thumb(s.image_url, s.name, "svc-card__img")}
+          ${thumb(svcPhoto(s), s.name, "svc-card__img")}
           <span class="svc-card__body"><strong>${esc(s.name)}</strong>${s.description ? `<small>${esc(s.description)}</small>` : ""}
             <span class="svc-card__meta"><span>${durLabel(s.duration_min)}</span><span class="${s.price == null ? "is-pending" : ""}">${priceLabel(s.price)}</span></span></span>
         </button>`).join("")}</div>`) +
@@ -324,7 +344,7 @@ export function mountBooking() {
       step(4, () => confirmBlock(b));
 
     summary.innerHTML = `<div class="ticket">
-      ${svc && safeUrl(svc.image_url) ? `<img class="ticket__img" src="${esc(svc.image_url)}" alt="">` : ""}
+      ${svc ? `<img class="ticket__img" src="${esc(svcPhoto(svc))}" alt="">` : ""}
       <p class="label">Tu reserva</p>
       <h2>${svc ? esc(svc.name) : "Elige un servicio"}</h2>
       <dl class="sum">

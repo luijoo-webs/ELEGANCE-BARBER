@@ -63,6 +63,8 @@ assert.equal((await as(null, `select * from services`)).length, 1);
 ok("el público no ve servicios inactivos");
 
 console.log("Disponibilidad");
+// El valor por defecto es 30 min; estas pruebas miden el bloqueo con pasos de 15.
+await db.query(`update settings set value = value || '{"intervalo_min": 15}' where key = 'reservas'`);
 const slots = await as(null, `select barber_id, slot_start from get_availability($1, null, $2::date, 7)`, [svc.id, d]);
 assert.ok(slots.length > 0);
 assert.ok(slots.every((s) => new Date(s.slot_start) > new Date(Date.now() + 59 * 60000)));
