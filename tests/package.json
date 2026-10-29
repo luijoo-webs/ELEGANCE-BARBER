@@ -1,0 +1,12 @@
+{
+  "name": "elegance-barber-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node sql.test.mjs",
+    "dev": "node dev-server.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.3.16"
+  }
+}
