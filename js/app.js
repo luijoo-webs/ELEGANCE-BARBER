@@ -89,6 +89,7 @@ async function render() {
   app.innerHTML = (panel ? "" : header()) + `<main id="main" tabindex="-1">${html}</main>` + (panel ? "" : footer());
   mount?.();
   bindHeader();
+  bindMotion();
   if (route === "inicio" && a) document.getElementById(a)?.scrollIntoView({ behavior: "smooth" });
   else window.scrollTo(0, 0);
 }
@@ -108,6 +109,30 @@ function bindHeader() {
   btn.addEventListener("click", () => toggle(true));
   drawer.addEventListener("click", (e) => { if (e.target.closest("[data-drawer-close], a")) toggle(false); });
 }
+
+// Aparición al hacer scroll (.rv / .rv-img) y parallax suave de [data-parallax].
+const still = matchMedia("(prefers-reduced-motion: reduce)");
+let io, parallax = [];
+function bindMotion() {
+  io?.disconnect();
+  const els = [...app.querySelectorAll(".rv, .rv-img")];
+  if (still.matches || !("IntersectionObserver" in window)) { els.forEach((el) => el.classList.add("is-in")); parallax = []; return; }
+  io = new IntersectionObserver((entries) => entries.forEach((e) => {
+    if (e.isIntersecting) { e.target.classList.add("is-in"); io.unobserve(e.target); }
+  }), { rootMargin: "0px 0px -8% 0px", threshold: 0.08 });
+  els.forEach((el) => io.observe(el));
+  parallax = [...app.querySelectorAll("[data-parallax]")];
+  onScroll();
+}
+function onScroll() {
+  const vh = innerHeight;
+  for (const el of parallax) {
+    const r = el.parentElement.getBoundingClientRect();
+    if (r.bottom < 0 || r.top > vh) continue;
+    el.style.transform = `translate3d(0, ${((r.top + r.height / 2 - vh / 2) * -0.15).toFixed(1)}px, 0)`;
+  }
+}
+addEventListener("scroll", () => parallax.length && requestAnimationFrame(onScroll), { passive: true });
 
 function setupScreen(detail = "") {
   app.innerHTML = `<main class="wrap narrow setup"><p class="eyebrow">Configuración pendiente</p><h1>Falta conectar Supabase</h1>

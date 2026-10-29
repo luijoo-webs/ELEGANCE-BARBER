@@ -29,7 +29,8 @@ Tomado del Instagram **@elegancebarberr** (perfil público, sin iniciar sesión)
 - Identidad: logo real (corona blanca con brillo amarillo sobre ladrillo negro) → paleta sobria (negro `#141312`, fondo `#f5f2ed`, acento `#9b7d4e`) y una sola familia tipográfica: Archivo (ancho variable).
 
 **No se inventó nada más.** Pendiente de que lo entregues (todo se carga desde el panel, sin tocar código):
-- Fotos reales: portada (si no hay, el hero muestra la corona del logo), local, barberos y trabajos. No descargué fotos de Instagram.
+- Fotos reales: portada, local, barberos y trabajos. No descargué fotos de Instagram.
+  Mientras tanto la portada, “La barbería”, la franja del eslogan y la franja final “Reserva tu próxima cita” usan **fotos de ambiente de barbería** (Unsplash, licencia libre, en `assets/fotos/`): no son del local. Al subir *Imagen de portada* y *Foto de la barbería* en Admin → Configuración, las reales las reemplazan. Las secciones Barberos y Trabajos nunca muestran fotos genéricas.
 - Ciudad (la dirección no la indica), teléfono, correo, enlace de Google Maps.
 - Servicios, duraciones y **precios** (sin precio se muestra “Precio por confirmar”).
 - Barberos (nombres, fotos, especialidades) y horarios de atención.

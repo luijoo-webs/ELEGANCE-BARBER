@@ -18,6 +18,9 @@ const mapUrl = () => safeUrl(N().mapa_url) ||
    franja de datos útiles, la barbería, servicios y precios, barberos,
    trabajos, horario y contacto. Solo datos reales configurados en el panel. */
 const igName = (u) => (String(u || "").match(/instagram\.com\/([^/?#]+)/i) || [])[1] || "";
+// Fotos de ambiente (Unsplash, licencia libre): no son del local. Se reemplazan
+// con las reales desde el panel (portada y foto de "la barbería").
+const STOCK = { hero: "assets/fotos/silla.jpg", corte: "assets/fotos/corte.jpg", tijeras: "assets/fotos/tijeras.jpg", cliente: "assets/fotos/cliente.jpg", afeitado: "assets/fotos/afeitado.jpg" };
 const label = (n, t) => `<p class="label"><span>${n}</span>${t}</p>`;
 
 export function viewHome() {
@@ -41,17 +44,23 @@ export function viewHome() {
     r.confirmacion_automatica === false ? "La barbería confirma tu cita." : "Confirmación inmediata."
   ].filter(Boolean);
   let i = 0; const num = () => String(++i).padStart(2, "0");
+  const aboutImg = safeUrl(n.about_imagen);
+  const ticker = [n.nombre_largo || "The Elegance Of The Barber's", n.eslogan || "Tu mejor opción", ...services.slice(0, 4).map((s) => s.name), "Reserva en línea"];
+  const rv = (k) => `class="rv" style="--i:${k}"`;
 
   return `
-  <section class="hero${heroImg ? "" : " hero--logo"}" id="inicio">
-    <div class="hero__media"><img src="${esc(heroImg || "assets/hero-crown.jpg")}" alt="${heroImg ? "" : "Corona del logo de Elegance Barber"}" fetchpriority="high"></div>
-    <div class="hero__content">
+  <section class="hero" id="inicio">
+    <div class="hero__media"><img src="${esc(heroImg || STOCK.hero)}" alt="" fetchpriority="high"></div>
+    <div class="hero__content wrap">
+      <img class="hero__mark" src="assets/logo-mark.jpg" alt="" width="64" height="64">
       <p class="hero__kicker">Barbería${n.ciudad ? ` · ${esc(n.ciudad)}` : ""}</p>
-      <h1 class="hero__title">The Elegance<span>of the Barber's</span></h1>
+      <h1 class="hero__title"><span class="ln"><span>The</span></span><span class="ln"><span>Elegance</span></span><span class="ln ln--sub"><span>of the Barber's</span></span></h1>
       <p class="hero__text">${esc(n.hero_texto || n.hero_titulo || n.eslogan || "Tu mejor opción.")}</p>
       <div class="hero__cta"><a class="btn btn--light btn--lg" href="#/reservar">Reservar cita</a><a class="link-line link-line--light" href="#/inicio/servicios">Ver servicios</a></div>
     </div>
+    <span class="hero__scroll" aria-hidden="true">Desliza</span>
   </section>
+  <div class="ticker" aria-hidden="true"><div class="ticker__track">${[0, 1].map(() => ticker.map((t) => `<span>${esc(t)}</span>`).join("")).join("")}</div></div>
   <div class="facts"><div class="wrap facts__in">
     <div><span>Dirección</span><p>${esc(n.direccion || "Por confirmar")}</p></div>
     <div><span>Hoy</span><p>${hasHours ? (hours[today].length ? esc(hours[today].join(" · ")) : "Cerrado") : "Horario por confirmar"}</p></div>
@@ -59,36 +68,39 @@ export function viewHome() {
   </div></div>
 
   <section class="section intro" id="nosotros" aria-labelledby="t-about">
-    <div class="wrap intro__grid${safeUrl(n.about_imagen) ? "" : " intro__grid--text"}">
-      <div>
+    <div class="wrap intro__grid intro__grid--photos">
+      <div class="rv">
         ${label(num(), "La barbería")}
         <h2 id="t-about" class="intro__lead">${esc(n.eslogan || "Tu mejor opción.")}</h2>
       </div>
-      <div class="intro__body">
+      <div class="intro__body rv" style="--i:1">
         ${n.filosofia ? n.filosofia.split(/\n{2,}/).map((p) => `<p>${esc(p)}</p>`).join("") : `<p>${esc(n.nombre_largo || "The Elegance Of The Barber's")}. ${n.direccion ? `Te esperamos en ${esc(n.direccion)}.` : ""}</p>`}
         <a class="link-line" href="#/reservar">Agenda tu visita</a>
       </div>
-      ${safeUrl(n.about_imagen) ? `<figure class="intro__img"><img src="${esc(n.about_imagen)}" alt="La barbería" loading="lazy"></figure>` : ""}
+      <div class="intro__photos">
+        <figure class="rv-img"><img src="${esc(aboutImg || STOCK.corte)}" alt="${aboutImg ? "La barbería" : ""}" loading="lazy"></figure>
+        <figure class="rv-img"><img src="${esc(STOCK.tijeras)}" alt="" loading="lazy"></figure>
+      </div>
     </div>
   </section>
 
   <section class="section section--paper" id="servicios" aria-labelledby="t-serv">
     <div class="wrap">
-      <header class="sec-head">${label(num(), "Servicios")}<h2 id="t-serv">Servicios y precios</h2></header>
+      <header class="sec-head rv">${label(num(), "Servicios")}<h2 id="t-serv">Servicios y precios</h2></header>
       ${services.length ? [...cats.map((c) => [c.name, services.filter((s) => s.category_id === c.id)]),
         ...(uncategorized.length ? [[cats.length ? "Otros" : "", uncategorized]] : [])]
-        .map(([name, list]) => `${name ? `<h3 class="cat-title">${esc(name)}</h3>` : ""}<ul class="menu">${list.map(menuItem).join("")}</ul>`).join("")
+        .map(([name, list]) => `${name ? `<h3 class="cat-title">${esc(name)}</h3>` : ""}<ul class="menu">${list.map((s, k) => menuItem(s, k)).join("")}</ul>`).join("")
         : `<p class="muted">Estamos actualizando servicios y precios.${wa ? ` <a href="${esc(wa)}" target="_blank" rel="noopener">Pregunta por WhatsApp</a>.` : ""}</p>`}
     </div>
   </section>
 
   <section class="section" id="barberos" aria-labelledby="t-barb">
     <div class="wrap">
-      <header class="sec-head sec-head--split"><div>${label(num(), "El equipo")}<h2 id="t-barb">Barberos</h2></div>
+      <header class="sec-head sec-head--split rv"><div>${label(num(), "El equipo")}<h2 id="t-barb">Barberos</h2></div>
         ${barbers.length ? `<a class="link-line" href="#/reservar">Reservar con tu barbero</a>` : ""}</header>
-      ${barbers.length ? `<div class="team">${barbers.map((b) => {
+      ${barbers.length ? `<div class="team">${barbers.map((b, k) => {
         const days = barberWorkDays(b.id);
-        return `<a class="person" href="#/reservar?barbero=${b.id}">
+        return `<a class="person rv" style="--i:${k}" href="#/reservar?barbero=${b.id}">
           <figure class="person__photo">${safeUrl(b.photo_url) ? `<img src="${esc(b.photo_url)}" alt="${esc(b.name)}" loading="lazy">` : `<span aria-hidden="true">${esc(initials(b.name))}</span>`}</figure>
           <h3>${esc(b.name)}</h3>
           <p>${b.specialties?.length ? esc(b.specialties.join(" · ")) : days.length ? esc(days.join(" · ")) : "Horario por confirmar"}</p></a>`;
@@ -99,22 +111,27 @@ export function viewHome() {
   ${gallery.length || ig ? `
   <section class="section section--dark" id="galeria" aria-labelledby="t-gal">
     <div class="wrap">
-      <header class="sec-head sec-head--split"><div>${label(num(), "Trabajos")}<h2 id="t-gal">Cortes recientes</h2></div>
+      <header class="sec-head sec-head--split rv"><div>${label(num(), "Trabajos")}<h2 id="t-gal">Cortes recientes</h2></div>
         ${ig ? `<a class="link-line link-line--light" href="${esc(n.instagram)}" target="_blank" rel="noopener">${igH ? `@${esc(igH)}` : "Instagram"}</a>` : ""}</header>
-      ${gallery.length ? `<div class="gallery">${gallery.map((g) => `<figure><img src="${esc(g.image_url)}" alt="${esc(g.caption || "Trabajo de Elegance Barber")}" loading="lazy">${g.caption ? `<figcaption>${esc(g.caption)}</figcaption>` : ""}</figure>`).join("")}</div>`
+      ${gallery.length ? `<div class="gallery">${gallery.map((g, k) => `<figure ${rv(k % 4)}><img src="${esc(g.image_url)}" alt="${esc(g.caption || "Trabajo de Elegance Barber")}" loading="lazy">${g.caption ? `<figcaption>${esc(g.caption)}</figcaption>` : ""}</figure>`).join("")}</div>`
         : `<p class="gallery__empty">Publicamos nuestros cortes en Instagram. <a href="${esc(n.instagram)}" target="_blank" rel="noopener">Ver perfil${igH ? ` @${esc(igH)}` : ""}</a></p>`}
     </div>
   </section>` : ""}
 
+  <div class="band" aria-hidden="true">
+    <div class="band__bg" data-parallax><img src="${esc(STOCK.cliente)}" alt="" loading="lazy"></div>
+    <p class="rv">${esc(n.eslogan || "Tu mejor opción.")}<small>${esc(n.nombre_largo || "The Elegance Of The Barber's")}</small></p>
+  </div>
+
   <section class="section" id="horario" aria-labelledby="t-hours">
     <div class="wrap visit">
-      <div>
+      <div class="rv">
         ${label(num(), "Horario")}
         <h2 id="t-hours">Horario de atención</h2>
         ${hasHours ? `<dl class="hours">${order.map((d) => `<div class="${d === today ? "is-today" : ""}"><dt>${DAYS[d]}${d === today ? " <small>hoy</small>" : ""}</dt><dd>${hours[d].length ? esc(hours[d].join(" · ")) : "Cerrado"}</dd></div>`).join("")}</dl>`
           : `<p class="muted">Horario por confirmar.</p>`}
       </div>
-      <div id="visitanos">
+      <div id="visitanos" class="rv" style="--i:1">
         ${label(num(), "Contacto")}
         <h2>Visítanos</h2>
         <ul class="contact">
@@ -129,7 +146,8 @@ export function viewHome() {
   </section>
 
   <section class="cta" aria-labelledby="t-book">
-    <div class="wrap cta__in">
+    <div class="cta__bg" aria-hidden="true"><img src="${esc(STOCK.afeitado)}" alt="" loading="lazy"></div>
+    <div class="wrap cta__in rv">
       <h2 id="t-book">Reserva tu próxima cita</h2>
       <ul>${rules.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
       <a class="btn btn--light btn--lg" href="#/reservar">Reservar ahora</a>
@@ -137,8 +155,8 @@ export function viewHome() {
   </section>`;
 }
 
-function menuItem(s) {
-  return `<li><a class="menu__item" href="#/reservar?servicio=${s.id}">
+function menuItem(s, k = 0) {
+  return `<li class="rv" style="--i:${k % 6}"><a class="menu__item" href="#/reservar?servicio=${s.id}">
     <span class="menu__name">${esc(s.name)}${s.description ? `<small>${esc(s.description)}</small>` : ""}</span>
     <span class="menu__dur">${durLabel(s.duration_min)}</span>
     <span class="menu__price${s.price == null ? " is-pending" : ""}">${priceLabel(s.price)}</span></a></li>`;
