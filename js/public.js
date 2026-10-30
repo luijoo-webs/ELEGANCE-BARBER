@@ -1,7 +1,8 @@
 /* Web pública: inicio, flujo de reserva y selector semanal de horarios. */
 import {
   sb, State, $, $$, esc, safeUrl, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday,
-  fmtDay, fmtTime, fmtDate, hhmm, ymd, friendly, toast, loader, emptyState, busy, scheduleByDay, barberWorkDays, waLink, setMsg
+  fmtDay, fmtTime, fmtDate, hhmm, ymd, friendly, toast, loader, emptyState, busy, scheduleByDay, barberWorkDays, waLink, setMsg,
+  mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData
 } from "./core.js";
 
 const N = () => State.settings.negocio || {};
@@ -21,6 +22,7 @@ const igName = (u) => (String(u || "").match(/instagram\.com\/([^/?#]+)/i) || []
 // Fotos de ambiente (Unsplash, licencia libre): no son del local.
 const F = (n) => `assets/fotos/${n}.jpg`;
 const STOCK = { afeitado: F("afeitado") };
+const REAL = (n) => F(`real-${n}`);   // fotos reales de la barbería
 const head = (title, id, link = "") => `<header class="lp-head rv"><h2${id ? ` id="${id}"` : ""}>${title}</h2>${link}</header>`;
 const words = (t) => esc(t).split(/\s+/).map((w, k) => `<span class="w"><span style="--i:${k}">${w}</span></span>`).join(" ");
 const ICON = {
@@ -53,8 +55,8 @@ export function viewHome() {
     r.confirmacion_automatica === false ? "La barbería confirma tu cita." : "Confirmación inmediata."
   ].filter(Boolean);
   const slides = [
-    { kicker: "Barbería", title: ["The Elegance", "of the Barber's"], imgs: [heroImg || F("silla"), F("svc-cortec"), F("afeitado"), F("svc-corte3")] },
-    { kicker: brand, title: [slogan], imgs: [F("svc-fade"), F("cliente"), F("svc-afinar"), F("svc-barba")] }
+    { kicker: "Barbería", title: ["The Elegance", "of the Barber's"], imgs: [heroImg || REAL("low-fade"), REAL("mohicano-barba"), REAL("clasico-linea"), REAL("pompadour")] },
+    { kicker: brand, title: [slogan], imgs: [REAL("fade-diseno"), REAL("mullet-barba"), REAL("diseno-nota"), F("silla")] }
   ];
   const pillars = [
     [ICON.cal, "Reserva en línea", "Eliges servicio, barbero y hora desde el celular, sin llamadas."],
@@ -62,7 +64,7 @@ export function viewHome() {
     r.confirmacion_automatica === false ? [ICON.check, "Te confirmamos", "La barbería revisa y confirma tu cita."] : [ICON.check, "Confirmación inmediata", "Tu cita queda lista al instante."],
     r.cancelacion_min_horas != null && [ICON.clock, "Cambios sin enredos", `Cancela${r.reprogramacion_permitida === false ? "" : " o reprograma"} desde tu cuenta hasta ${r.cancelacion_min_horas} h antes.`]
   ].filter(Boolean);
-  const igTiles = [...gallery.map((g) => g.image_url), ...["svc-corte3", "svc-fade", "svc-barba", "svc-cortec", "svc-peinado", "corte"].map(F)].slice(0, 6);
+  const igTiles = [...gallery.map((g) => g.image_url), ...["mohicano-barba", "fade-diseno", "clasico-linea", "diseno-nota", "low-fade", "mullet-barba"].map(REAL)].slice(0, 6);
   const BARBER_BG = ["tijeras", "silla", "svc-peine", "svc-guantes"].map(F);
   const place = [n.direccion, n.ciudad].filter(Boolean).join(", ");
   const mapQ = place ? (n.ciudad ? place : `${place}, Colombia`) : "";
@@ -155,7 +157,8 @@ export function viewHome() {
         </div>
       </div>
       ${mapQ ? `<div class="visit__map rv">
-        <iframe title="Mapa: ${esc(place)}" src="https://maps.google.com/maps?q=${encodeURIComponent(mapQ)}&z=16&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+        ${mapAllowed() ? `<iframe title="Mapa: ${esc(place)}" src="https://maps.google.com/maps?q=${encodeURIComponent(mapQ)}&z=16&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>`
+          : `<div class="visit__nomap"><p>El mapa lo carga Google, que usa sus propias cookies.</p><button type="button" class="btn btn--sm" data-cookies="all">Ver mapa</button><a class="link-line" href="#/legal/cookies">Política de cookies</a></div>`}
         <button type="button" class="visit__go" data-route-open><span>Cómo llegar</span><small>Google Maps o Waze</small></button>
       </div>
       <dialog class="route-dlg" id="routeDlg" aria-labelledby="t-route">
@@ -203,13 +206,16 @@ document.addEventListener("click", (e) => {
 });
 
 // Foto del servicio: la subida en el panel o, si no hay, una de ambiente según el nombre.
-const SVC_STOCK = ["svc-corte3", "svc-guantes", "svc-peinado", "svc-cortec", "svc-afinar", "svc-peine"];
+// Foto por tipo de servicio (la primera regla que coincide); reales cuando hay una que corresponda.
+const SVC_PHOTO = [
+  [/pigment|diseñ/, REAL("diseno-nota")], [/niñ|nin[oa]/, REAL("fade-diseno")], [/corte.*barba|barba.*corte/, REAL("mohicano-barba")], [/barba|afeit|perfil/, REAL("mullet-barba")],
+  [/tijera/, REAL("pompadour")], [/secado|planchado/, REAL("clasico-linea")],
+  [/ceja/, F("svc-afinar")], [/cepill/, F("svc-peinado")], [/querat|keratin|mascarilla|tratam/, F("svc-tratamiento")]
+];
 function svcPhoto(s) {
   if (safeUrl(s.image_url)) return s.image_url;
-  const t = `${s.name} ${s.description || ""}`.toLowerCase();
-  const f = /amino/.test(t) ? "svc-peine" : /querat|keratin|tratam|hidrat|lavad/.test(t) ? "svc-tratamiento" : /barba|afeit|perfil/.test(t) ? "svc-barba"
-    : /diseñ|line|ceja|fade|degrad/.test(t) ? "svc-fade" : SVC_STOCK[[...String(s.id)].reduce((a, c) => a + c.charCodeAt(0), 0) % SVC_STOCK.length];
-  return F(f);
+  const t = s.name.toLowerCase();
+  return (SVC_PHOTO.find(([re]) => re.test(t)) || [, REAL("low-fade")])[1];
 }
 
 function menuItem(s, k = 0, cat = "") {
@@ -414,10 +420,15 @@ export function mountBooking() {
   function confirmBlock(b) {
     if (!State.user) return `<p>Para confirmar necesitas una cuenta. Tu selección queda guardada.</p>
       <div class="row"><a class="btn" href="#/cuenta?volver=reservar">Iniciar sesión</a><a class="btn btn--ghost" href="#/cuenta/registro?volver=reservar">Crear cuenta</a></div>`;
+    const p = State.profile || {};
     return `<form id="confirmForm" class="form" novalidate>
+      <p class="muted small">Tus datos de contacto: el barbero los verá en su agenda por si necesita escribirte.</p>
+      <div class="grid-2"><label class="field"><span>Nombre completo</span><input name="full_name" required minlength="2" maxlength="120" autocomplete="name" value="${esc(p.full_name || "")}"></label>
+        <label class="field"><span>Celular / WhatsApp</span><input name="phone" type="tel" required minlength="7" maxlength="30" autocomplete="tel" inputmode="tel" value="${esc(p.phone || "")}"></label></div>
       <label class="field"><span>Nota para el barbero (opcional)</span>
         <textarea name="notes" maxlength="500" rows="2" placeholder="Ej.: quiero mantener el largo arriba">${esc(b.notes || "")}</textarea></label>
-      <p class="muted small">Reservas como <strong>${esc(State.profile?.full_name || State.user.email)}</strong>.</p>
+      <p class="muted small">Cuenta: <strong>${esc(State.user.email)}</strong>. El pago se hace en la barbería.</p>
+      ${consentChecks()}
       <button class="btn btn--lg btn--block" type="submit" data-busy="Confirmando…">Confirmar cita</button>
       <p class="form-msg" id="confirmMsg" role="alert"></p></form>`;
   }
@@ -433,8 +444,15 @@ export function mountBooking() {
   steps.addEventListener("input", (e) => { if (e.target.name === "notes") Booking.set({ notes: e.target.value }); });
   steps.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const b = Booking.get();
+    const b = Booking.get(), f = formData(e.target);
+    if (f.full_name.trim().length < 2) return setMsg($("#confirmMsg"), "Escribe tu nombre completo.");
+    if (f.phone.replace(/\D/g, "").length < 7) return setMsg($("#confirmMsg"), "Escribe un celular válido para contactarte.");
+    if (consentMissing(f)) return setMsg($("#confirmMsg"), consentMissing(f));
     await busy(e.submitter || $("#confirmForm button"), async () => {
+      const { error: pe } = await sb.from("profiles").update({ full_name: f.full_name.trim(), phone: f.phone.trim() }).eq("id", State.user.id);
+      if (pe) return setMsg($("#confirmMsg"), friendly(pe));
+      try { await logConsent("reserva", State.user.email, f.full_name.trim()); } catch (ce) { return setMsg($("#confirmMsg"), friendly(ce)); }
+      await loadProfile();
       const { data, error } = await sb.rpc("book_appointment", {
         p_service: b.serviceId, p_barber: b.barberId === "any" ? null : b.barberId, p_start: b.start, p_notes: b.notes || null
       });

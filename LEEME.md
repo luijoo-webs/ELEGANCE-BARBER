@@ -17,8 +17,8 @@ Mismo modelo de despliegue que La Percha: sitio estático (sin compilación) →
 | `supabase/01_esquema.sql` | Tablas, restricciones, funciones de reserva, RLS y auditoría. |
 | `supabase/02_storage.sql` | Bucket `media` para fotos (lectura pública, escritura solo admin). |
 | `supabase/03_finanzas.sql` | Tabla `finance_entries` (ingresos y gastos, solo admin) y función `admin_delete_appointment` (borra solo citas canceladas). |
-| `supabase/04_duracion_30.sql` | Cada corte dura 30 min: duración por defecto e intervalo de horas en 30 min (solo para bases creadas antes del cambio). |
-| `supabase/05_servicios.sql` | Agrega Corte full (Cortes), Keratina y Aminoácidos (Tratamientos), 30 min, precio por definir. Re-ejecutable. |
+| `supabase/04_negocio_real.sql` | Datos reales: 13 servicios con precio (lavado incluido), 35 min por cliente, horario lun–sáb 9:30–20:00, 2 barberos por nombrar, nombre completo, y la tabla `consent_log` (registro legal de aceptaciones). Re-ejecutable. |
+| `js/legal.js` | Términos, privacidad (Ley 1581), cookies y cancelación/reembolso (Ley 1480), en `#/legal/...`. |
 | `supabase/correos/` | Plantillas de los correos de Auth. |
 | `tests/` | Pruebas del SQL y servidor local de desarrollo (no es parte del sitio). |
 
@@ -49,7 +49,7 @@ Mientras no haya horario general, servicios y barberos activos, la web muestra �
 ## 3. Puesta en marcha (una vez)
 
 1. **Crear proyecto** en Supabase (región São Paulo recomendada para Colombia).
-2. **SQL Editor** → pegar y ejecutar `supabase/01_esquema.sql` completo. Luego `supabase/02_storage.sql` y `supabase/03_finanzas.sql`.
+2. **SQL Editor** → pegar y ejecutar `supabase/01_esquema.sql` completo. Luego `supabase/02_storage.sql`, `supabase/03_finanzas.sql` y `supabase/04_negocio_real.sql`.
    Los tres son re-ejecutables y no borran datos.
 3. **Project Settings → API**: copiar *Project URL* y la clave *anon / publishable* en `js/config.js`.
    ⚠️ Nunca pongas la `service_role` ni la contraseña de la base de datos en el código ni en Git.
@@ -81,9 +81,18 @@ Mientras no haya horario general, servicios y barberos activos, la web muestra �
 - **Finanzas** (Admin → Estadísticas): ingresos y gastos se registran a mano (descripción, categoría, valor, fecha). El balance solo se muestra cuando hay ingresos registrados: una cita reservada o completada **no** es dinero recibido (la web no cobra en línea). El “valor estimado” de citas completadas es solo una referencia según el precio de la cita.
 - Zona horaria: todo se calcula en `America/Bogota` (UTC−5, sin horario de verano).
 
-Reglas por defecto (cámbialas en Admin → Configuración → Reglas de reserva): cada corte dura 30 min (duración por defecto de un servicio nuevo), intervalo 30 min, anticipación mínima 60 min, máxima 30 días, cancelación hasta 2 h antes, 3 citas activas por cliente, “cualquier barbero” activado.
+Reglas por defecto (cámbialas en Admin → Configuración → Reglas de reserva): 35 min por cliente (duración e intervalo: 9:30, 10:05, 10:40…), anticipación mínima 60 min, máxima 30 días, cancelación hasta 2 h antes, 3 citas activas por cliente, “cualquier barbero” activado.
 
-## 5. Roles y seguridad
+## 5. Parte legal (Colombia)
+
+- **Documentos**: `#/legal/terminos`, `#/legal/privacidad`, `#/legal/cookies`, `#/legal/reembolsos` (enlazados en el pie). Completa *Nombre del propietario o razón social* y *NIT o cédula* en Admin → Configuración: aparecen en los documentos. **Revísalos con el dueño** (sobre todo los 3 días de garantía y la devolución del 100 % si pagó y no se prestó el servicio).
+- **Casillas separadas** de términos y de privacidad en el registro y en la confirmación de la reserva; sin marcarlas no se puede continuar.
+- **Prueba ante la SIC**: cada aceptación queda en `consent_log` (fecha y hora, versión, formulario, correo, nombre, IP tomada por el servidor, navegador y página). Solo se inserta; nadie la edita ni borra desde la web. Admin → Clientes → *Aceptaciones legales* → *Descargar CSV*. Si cambias un documento, sube `LEGAL_VERSION` en `js/core.js`.
+- **Cookies**: la web solo usa almacenamiento necesario (sesión, reserva en curso), que no requiere consentimiento. El mapa de Google pone cookies de terceros, así que solo se carga si la persona lo acepta (barra de cookies o botón *Ver mapa*). No hay analítica ni publicidad.
+- **Registro Nacional de Bases de Datos (RNBD)**: solo es obligatorio para empresas con activos de más de 100.000 UVT (Decreto 090 de 2018); una barbería pequeña normalmente no está obligada, pero confírmalo con el contador.
+- Precios en pesos y como valor final (Ley 1480). Contacto con clientes solo sobre su cita; publicidad solo con autorización aparte y en los horarios de la Ley 2300 de 2023.
+
+## 6. Roles y seguridad
 
 - **Cliente**: ve y edita solo su perfil (nombre, celular) y sus citas. Reserva/cancela/reprograma solo por funciones del servidor.
 - **Administrador**: acceso total al panel. El rol se asigna por SQL o desde Admin → Clientes (con confirmación).
@@ -92,22 +101,22 @@ Reglas por defecto (cámbialas en Admin → Configuración → Reglas de reserva
 - Notas internas de clientes en tabla aparte, visible solo para administradores. Nunca se muestran contraseñas.
 - Los datos de prueba solo existen en el servidor local (`tests/`), nunca en Supabase.
 
-## 6. Publicar
+## 7. Publicar
 
 Igual que La Percha: subir `index.html`, `css/`, `js/` a GitHub Pages (o Cloudflare Pages) y apuntar el dominio. No hace falta compilar.
 Después de publicar, actualiza *Site URL* y *Redirect URLs* en Supabase con el dominio final.
 La carpeta `tests/` no contiene secretos de producción (la cuenta admin que ves ahí solo existe en la base local en memoria), pero puedes excluirla del sitio publicado.
 
-## 7. Pruebas
+## 8. Pruebas
 
 ```bash
 cd tests && npm install
-npm test          # 38 pruebas del esquema SQL (reservas, solapes, RLS, roles, estados, pendientes)
+npm test          # 43 pruebas del esquema SQL (reservas, solapes, RLS, roles, estados, pendientes)
 npm run dev       # web completa en http://127.0.0.1:5180 con un Supabase simulado sobre el mismo SQL
 ```
 El servidor local usa datos ficticios marcados “(prueba)” y una cuenta admin local definida en `tests/dev-server.mjs`. No implementa Storage (subida de fotos) ni Realtime.
 
-## 8. Qué está verificado y qué no
+## 9. Qué está verificado y qué no
 
 Verificado localmente (PGlite con el mismo SQL y RLS, y la web real en el navegador):
 registro, inicio/cierre de sesión, recuperación de contraseña (con enlace simulado), reserva completa conservando la selección tras registrarse, bloqueo del horario, reservas simultáneas (solo entra una por barbero), “cualquier barbero”, cancelación que libera el hueco, reprogramación, navegación entre semanas, permisos cliente vs. admin (sin acceso a citas ajenas ni a funciones de admin, no puede hacerse admin), agenda día/semana, cita manual con validación, cambio de estado, bloqueos, horarios con pausas, servicios sin precio, configuración y auditoría.

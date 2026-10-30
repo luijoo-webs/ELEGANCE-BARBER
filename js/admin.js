@@ -17,6 +17,7 @@ const go = (h) => { if (location.hash === h) refresh(); else location.hash = h; 
 const hrefWith = (base, query, patch) => `${base}?${new URLSearchParams(Object.entries({ ...query, ...patch }).filter(([, v]) => v !== "" && v != null))}`;
 const barberName = (id) => State.barbers.find((b) => b.id === id)?.name || "—";
 let channel = null;
+const waNum = (t) => { const d = String(t).replace(/\D/g, ""); return d.length === 10 ? "57" + d : d; };   // celular colombiano sin indicativo
 
 const ICON = {
   resumen: '<path d="M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z"/>',
@@ -51,7 +52,7 @@ export async function view(sec, sub, query) {
   if (!isAdmin()) return { html: emptyState("No tienes permisos de administrador.") };
   await loadPublic();   // con sesión de admin, RLS devuelve también lo inactivo
   const views = { resumen: vResumen, agenda: vAgenda, citas: vCitas, servicios: vServicios, barberos: vBarberos, clientes: vClientes,
-    horarios: vHorarios, configuracion: vConfig, actividad: vActividad, estadisticas: vEstadisticas };
+    horarios: vHorarios, configuracion: vConfig, consentimientos: vConsentimientos, estadisticas: vEstadisticas };
   const fn = views[sec];
   if (!fn) return { html: shell("", "Sección no encontrada", "", emptyState("Esa sección no existe.")) };
   try { return await fn(sub, query); }
@@ -304,10 +305,7 @@ function apptEditor({ appt = null, date = todayYmd(), time = "", barberId = "", 
 }
 
 async function apptDetail(id) {
-  const [a, log] = await Promise.all([
-    q(sb.from("appointments").select("*").eq("id", id).single()),
-    q(sb.from("audit_log").select("*").eq("entity", "appointments").eq("entity_id", id).order("at", { ascending: false }).limit(20))
-  ]).catch((e) => { toast(friendly(e), "err"); return []; });
+  const a = await q(sb.from("appointments").select("*").eq("id", id).single()).catch((e) => { toast(friendly(e), "err"); });
   if (!a) return;
   const active = ["pendiente", "confirmada"].includes(a.status), started = new Date(a.starts_at) <= new Date();
   const m = modal(`<h2 class="modal__t">${esc(a.client_name || "Cliente")} ${statusBadge(a.status)}</h2>
@@ -317,7 +315,7 @@ async function apptDetail(id) {
       <dt>Barbero</dt><dd>${esc(a.barber_name)}</dd>
       <dt>Fecha</dt><dd>${esc(fmtDate(a.starts_at, { year: "numeric" }))}</dd>
       <dt>Hora</dt><dd>${fmtTime(a.starts_at)} – ${fmtTime(a.ends_at)}</dd>
-      <dt>Contacto</dt><dd>${esc(a.client_phone || "—")}${a.client_email ? ` · ${esc(a.client_email)}` : ""}${a.client_id ? ` · <a href="#/admin/clientes/${a.client_id}" data-close>ver cliente</a>` : " · sin cuenta"}</dd>
+      <dt>Contacto</dt><dd>${a.client_phone ? `<a href="tel:${esc(a.client_phone.replace(/[^\d+]/g, ""))}">${esc(a.client_phone)}</a> · <a href="https://wa.me/${esc(waNum(a.client_phone))}" target="_blank" rel="noopener">WhatsApp</a>` : "—"}${a.client_email ? ` · ${esc(a.client_email)}` : ""}${a.client_id ? ` · <a href="#/admin/clientes/${a.client_id}" data-close>ver cliente</a>` : " · sin cuenta"}</dd>
       <dt>Origen</dt><dd>${a.source === "admin" ? "Creada por administración" : "Reserva web"} · ${esc(fmtDateTime(a.created_at))}</dd>
       ${a.client_notes ? `<dt>Nota del cliente</dt><dd>${esc(a.client_notes)}</dd>` : ""}
       ${a.status === "pendiente" && a.pending_expires_at ? `<dt>Se libera</dt><dd>${esc(fmtDateTime(a.pending_expires_at))} si no se confirma</dd>` : ""}
@@ -331,12 +329,11 @@ async function apptDetail(id) {
       ${a.status === "cancelada" ? `<button class="btn btn--sm btn--ghost btn--danger-text" data-del>Eliminar definitivamente</button>` : ""}
     </div>
     <form class="form" id="notesForm"><label class="field"><span>Notas internas</span><textarea name="notes" rows="2" maxlength="2000">${esc(a.admin_notes || "")}</textarea></label>
-      <button class="btn btn--sm btn--ghost" type="submit">Guardar nota</button></form>
-    <h3 class="h-sec">Historial de cambios</h3>${auditList(log)}`, { wide: true });
+      <button class="btn btn--sm btn--ghost" type="submit">Guardar nota</button></form>`, { wide: true });
   m.el.addEventListener("click", async (e) => {
     if (e.target.closest("[data-edit]")) { m.close(); return apptEditor({ appt: a }); }
     if (e.target.closest("[data-del]")) {
-      if (!(await confirmDialog(`¿Eliminar definitivamente la cita cancelada de ${a.client_name || "este cliente"} (${fmtDate(a.starts_at)} ${fmtTime(a.starts_at)})? No se puede deshacer; queda una copia en el registro de cambios.`, "Eliminar cita", true))) return;
+      if (!(await confirmDialog(`¿Eliminar definitivamente la cita cancelada de ${a.client_name || "este cliente"} (${fmtDate(a.starts_at)} ${fmtTime(a.starts_at)})? No se puede deshacer.`, "Eliminar cita", true))) return;
       const { error } = await sb.rpc("admin_delete_appointment", { p_id: a.id });
       if (error) return toast(friendly(error), "err");
       m.close(); toast("Cita eliminada."); return refresh();
@@ -369,14 +366,15 @@ function askText(title, label) {
 }
 
 /* Bloqueos / cierres / vacaciones. barberId vacío = todo el negocio. Avisa si hay citas en el rango. */
-function blockEditor({ date = todayYmd(), barberId = "", fixedBarber = false, kind = "bloqueo" } = {}) {
+function blockEditor({ date = todayYmd(), barberId = "", fixedBarber = false, kind = "bloqueo", early = false } = {}) {
   const m = modal(`<h2 class="modal__t">${fixedBarber ? "Ausencia o vacaciones" : "Bloquear horario / cierre"}</h2>
     <form class="form" id="blkForm" novalidate>
       ${fixedBarber ? `<input type="hidden" name="barber" value="${barberId}">` : `<label class="field"><span>Aplica a</span><select name="barber"><option value="">Todo el negocio (nadie puede reservar)</option>${State.barbers.filter((b) => !b.deleted_at).map((b) => `<option value="${b.id}" ${b.id === barberId ? "selected" : ""}>${esc(b.name)}</option>`).join("")}</select></label>`}
       <label class="field"><span>Tipo</span><select name="kind">${Object.entries(KIND).map(([k, v]) => `<option value="${k}" ${k === kind ? "selected" : ""}>${v}</option>`).join("")}</select></label>
-      <label class="check"><input type="checkbox" name="allday" checked> Días completos</label>
+      ${early ? `<p class="muted small">Horario especial: bloquea desde la hora en que se va hasta el cierre (ej.: si trabaja hasta las 6:00 p. m., de 18:00 a 20:00). Nadie podrá reservar en ese rango.</p>` : ""}
+      <label class="check"><input type="checkbox" name="allday" ${early ? "" : "checked"}> Días completos</label>
       <div class="grid-2"><label class="field"><span>Desde (fecha)</span><input type="date" name="d1" required value="${date}"></label><label class="field"><span>Hasta (fecha)</span><input type="date" name="d2" required value="${date}"></label></div>
-      <div class="grid-2" id="hrs" hidden><label class="field"><span>Hora inicio</span><input type="time" name="t1" value="12:00" step="300"></label><label class="field"><span>Hora fin</span><input type="time" name="t2" value="13:00" step="300"></label></div>
+      <div class="grid-2" id="hrs" ${early ? "" : "hidden"}><label class="field"><span>Hora inicio</span><input type="time" name="t1" value="${early ? "18:00" : "12:00"}" step="300"></label><label class="field"><span>Hora fin</span><input type="time" name="t2" value="${early ? "20:00" : "13:00"}" step="300"></label></div>
       <label class="field"><span>Motivo (interno)</span><input name="reason" maxlength="200" placeholder="Ej.: festivo, capacitación, almuerzo"></label>
       <button class="btn btn--block" type="submit" data-busy="Guardando…">Guardar bloqueo</button><p class="form-msg" id="blkMsg" role="alert"></p>
     </form>`);
@@ -502,7 +500,7 @@ function serviceEditor(s = null) {
       <label class="field"><span>Descripción</span><textarea name="description" rows="3" maxlength="600">${esc(s?.description)}</textarea></label>
       <div class="grid-2">
         <label class="field"><span>Categoría</span><select name="category_id"><option value="">Sin categoría</option>${State.categories.map((c) => `<option value="${c.id}" ${c.id === s?.category_id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
-        <label class="field"><span>Duración (minutos)</span><input type="number" name="duration_min" required min="5" max="480" step="5" value="${s?.duration_min ?? 30}"></label>
+        <label class="field"><span>Duración (minutos)</span><input type="number" name="duration_min" required min="5" max="480" step="5" value="${s?.duration_min ?? 35}"></label>
         <label class="field"><span>Precio en COP (vacío = por definir)</span><input type="number" name="price" min="0" step="100" value="${s?.price ?? ""}" inputmode="numeric"></label>
         <label class="field"><span>Orden</span><input type="number" name="sort_order" value="${s?.sort_order ?? 0}"></label>
       </div>
@@ -673,15 +671,16 @@ async function vHorarios() {
     <div class="card"><h2>Horario general del negocio</h2>
       <p class="muted small">Define cuándo abre la barbería. Cada barbero puede tener un horario propio dentro de este (en Barberos). Deja un día sin franjas para marcarlo como día de descanso; usa dos franjas para una pausa.</p>
       <div id="sched"></div></div>
-    <div class="card" style="margin-top:14px"><div class="row" style="justify-content:space-between"><h2>Cierres, festivos y días no laborables</h2><button class="btn btn--sm" id="addClose" type="button">Agregar cierre</button></div>
+    <div class="card" style="margin-top:14px"><div class="row" style="justify-content:space-between"><h2>Cierres, festivos y días no laborables</h2><span class="row"><button class="btn btn--sm btn--ghost" id="addEarly" type="button">Horario especial de un día</button><button class="btn btn--sm" id="addClose" type="button">Agregar cierre</button></span></div>
       <div id="offs">${offsTable(offs)}</div></div>
     <div class="card" style="margin-top:14px"><h2>Reglas de reserva vigentes</h2>
-      <dl class="kv"><dt>Intervalo entre horas de inicio</dt><dd>${r.intervalo_min ?? 30} min</dd><dt>Anticipación mínima</dt><dd>${r.anticipacion_min_minutos ?? 60} min</dd>
+      <dl class="kv"><dt>Intervalo entre horas de inicio</dt><dd>${r.intervalo_min ?? 35} min</dd><dt>Anticipación mínima</dt><dd>${r.anticipacion_min_minutos ?? 60} min</dd>
       <dt>Anticipación máxima</dt><dd>${r.anticipacion_max_dias ?? 30} días</dd><dt>Cancelar/reprogramar hasta</dt><dd>${r.cancelacion_min_horas ?? 2} h antes</dd></dl>
       <p style="margin-top:12px"><a class="link-arrow" href="#/admin/configuracion/reservas">Cambiar reglas</a></p></div>`);
   const mount = () => {
     scheduleEditor($("#sched"), null);
     $("#addClose").addEventListener("click", () => blockEditor({ kind: "cierre" }));
+    $("#addEarly").addEventListener("click", () => blockEditor({ early: true }));
     bindOffs($("#offs"), offs);
   };
   return { html, mount };
@@ -701,7 +700,7 @@ async function vClientes(id, query) {
     const c = (counts[a.client_id] ||= { total: 0, done: 0 }); c.total++; if (a.status === "completada") c.done++;
   });
   const ROLES = { client: "Cliente", admin: "Administrador", barber: "Barbero" };
-  const html = shell("clientes", "Clientes", "", `
+  const html = shell("clientes", "Clientes", `<a class="btn btn--sm btn--ghost" href="#/admin/consentimientos">Aceptaciones legales</a>`, `
     <form class="toolbar" id="fForm"><input class="grow" type="search" name="q" value="${esc(query.q || "")}" placeholder="Buscar por nombre, correo o celular">
       <select name="rol" aria-label="Rol"><option value="">Todos los roles</option>${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${k === query.rol ? "selected" : ""}>${v}</option>`).join("")}</select>
       <button class="btn btn--sm" type="submit">Buscar</button></form>
@@ -774,6 +773,8 @@ async function vConfig(tab = "negocio") {
     <div class="grid-2">${field("mapa_url", "Enlace de Google Maps (opcional)", "type=url placeholder='https://maps.app.goo.gl/…'")}${field("telefono", "Teléfono / celular", "maxlength=30")}
       ${field("whatsapp_url", "Enlace de WhatsApp", "type=url")}${field("correo", "Correo de contacto", "type=email")}
       ${field("instagram", "Instagram", "type=url")}${field("facebook", "Facebook", "type=url")}${field("tiktok", "TikTok", "type=url")}</div>
+    <h3 class="h-sec">Datos legales (aparecen en Términos y Política de privacidad)</h3>
+    <div class="grid-2">${field("titular", "Nombre del propietario o razón social", "maxlength=120")}${field("nit", "NIT o cédula", "maxlength=30")}</div>
     <h3 class="h-sec">Textos de la web</h3>
     ${field("hero_titulo", "Título principal (portada)", "maxlength=120 placeholder='Precisión, estilo y el tiempo que tu corte merece.'")}
     <label class="field"><span>Texto de portada</span><textarea name="hero_texto" rows="2" maxlength="300">${esc(n.hero_texto || "")}</textarea></label>
@@ -786,7 +787,7 @@ async function vConfig(tab = "negocio") {
     <label class="field" style="max-width:220px"><span>Color de acento</span><input type="color" name="color_acento" value="${esc(/^#[0-9a-f]{6}$/i.test(n.color_acento || "") ? n.color_acento : "#141312")}"></label>
     <button class="btn" type="submit" data-busy="Guardando…">Guardar</button><p class="form-msg" id="cfgMsg"></p></form>`;
   if (tab === "reservas") body = `<form class="form card" id="cfgForm" data-key="reservas">
-    <div class="grid-2">${num("intervalo_min", "Intervalo entre horas de inicio (min)", 5, 120, 30)}${num("anticipacion_min_minutos", "Anticipación mínima (minutos)", 0, 10080, 60)}
+    <div class="grid-2">${num("intervalo_min", "Intervalo entre horas de inicio (min)", 5, 120, 35)}${num("anticipacion_min_minutos", "Anticipación mínima (minutos)", 0, 10080, 60)}
       ${num("anticipacion_max_dias", "Anticipación máxima (días)", 1, 365, 30)}${num("cancelacion_min_horas", "Cancelar/reprogramar hasta (horas antes)", 0, 168, 2)}
       ${num("max_reservas_activas", "Máx. citas activas por cliente", 1, 20, 3)}${num("pendiente_horas", "Horas para confirmar una pendiente", 1, 168, 12)}</div>
     <label class="check"><input type="checkbox" name="confirmacion_automatica" ${r.confirmacion_automatica === false ? "" : "checked"}> Confirmar automáticamente las reservas web (si se desactiva, quedan “pendientes” y bloquean el horario solo durante las horas indicadas)</label>
@@ -853,29 +854,21 @@ async function vConfig(tab = "negocio") {
   return { html, mount };
 }
 
-/* =============================== ACTIVIDAD =============================== */
-const ENTITY = { appointments: "Cita", services: "Servicio", service_categories: "Categoría", barbers: "Barbero", schedules: "Horario", time_off: "Bloqueo",
-  settings: "Configuración", client_admin_notes: "Nota de cliente", gallery: "Galería", profiles: "Perfil", finance_entries: "Movimiento" };
-const ACTION = { insert: "creó", update: "modificó", delete: "eliminó" };
-const FIELD = { status: "estado", starts_at: "inicio", ends_at: "fin", barber_id: "barbero", barber_name: "barbero", admin_notes: "notas", price: "precio", duration_min: "duración",
-  active: "activo", deleted_at: "eliminado", name: "nombre", role: "rol", value: "valores", cancel_reason: "motivo", service_name: "servicio" };
-const showVal = (k, v) => v == null ? "—" : /_at$/.test(k) && typeof v === "string" ? fmtDateTime(v) : typeof v === "object" ? "…" : String(v).slice(0, 60);
-function auditList(log) {
-  if (!log?.length) return `<p class="muted small">Sin cambios registrados.</p>`;
-  return `<ul class="log" style="list-style:none;padding:0;margin:0">${log.map((l) => {
-    const changes = l.action === "update" ? Object.entries(l.details || {}).filter(([k]) => !["barber_name", "pending_expires_at", "cancelled_by", "cancelled_at"].includes(k))
-      .map(([k, [a, b]]) => `${FIELD[k] || k}: ${esc(showVal(k, a))} → ${esc(showVal(k, b))}`).join("; ") : "";
-    return `<li><span class="muted">${esc(fmtDateTime(l.at))}</span> · <strong>${esc(l.actor_email || (l.actor ? "usuario" : "sistema"))}</strong> ${ACTION[l.action] || l.action} ${esc((ENTITY[l.entity] || l.entity).toLowerCase())}${l.entity === "settings" ? ` (${esc(l.entity_id)})` : ""}${changes ? ` — ${changes}` : ""}</li>`;
-  }).join("")}</ul>`;
-}
-async function vActividad(_, query) {
-  let ql = sb.from("audit_log").select("*").order("at", { ascending: false }).limit(200);
-  if (query.e) ql = ql.eq("entity", query.e);
-  const log = await q(ql);
-  const html = shell("actividad", "Actividad", "", `
-    <form class="toolbar" id="fForm"><select name="e" aria-label="Tipo"><option value="">Todo</option>${Object.entries(ENTITY).map(([k, v]) => `<option value="${k}" ${k === query.e ? "selected" : ""}>${v}</option>`).join("")}</select><button class="btn btn--sm" type="submit">Filtrar</button></form>
-    <div class="card"><p class="muted small">Últimos 200 cambios. Registro automático en la base de datos (no editable).</p>${auditList(log)}</div>`);
-  return { html, mount: () => $("#fForm").addEventListener("submit", (e) => { e.preventDefault(); go(hrefWith("#/admin/actividad", {}, formData(e.target))); }) };
+/* =============================== CONSENTIMIENTOS (prueba ante la SIC) =============================== */
+async function vConsentimientos() {
+  const rows = await q(sb.from("consent_log").select("*").order("accepted_at", { ascending: false }).limit(1000));
+  const cols = [["accepted_at", "Fecha y hora"], ["full_name", "Nombre"], ["email", "Correo"], ["document", "Documento"], ["version", "Versión"], ["form", "Formulario"], ["ip", "IP"], ["user_agent", "Navegador"], ["page_url", "Página"]];
+  const html = shell("clientes", "Aceptaciones legales", `<button class="btn btn--sm" id="csv" type="button" ${rows.length ? "" : "disabled"}>Descargar CSV</button>`, `
+    <div class="card"><p class="muted small">Cada vez que alguien crea su cuenta o reserva queda aquí cuándo y cómo aceptó los términos y la política de privacidad (fecha, versión, formulario, IP y navegador). No se puede editar ni borrar. Úsalo como prueba si la SIC lo solicita.</p>
+    ${rows.length ? `<div class="table-wrap"><table><thead><tr>${cols.slice(0, 7).map(([, t]) => `<th>${t}</th>`).join("")}</tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(fmtDateTime(r.accepted_at))}</td><td>${esc(r.full_name || "")}</td><td>${esc(r.email || "")}</td><td>${r.document === "terminos" ? "Términos" : "Privacidad"}</td><td>${esc(r.version)}</td><td>${esc(r.form)}</td><td>${esc(r.ip || "—")}</td></tr>`).join("")}</tbody></table></div>` : `<p class="muted">Aún no hay aceptaciones registradas.</p>`}</div>`);
+  const mount = () => $("#csv")?.addEventListener("click", () => {
+    const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const csv = [cols.map(([, t]) => cell(t)).join(","), ...rows.map((r) => cols.map(([k]) => cell(r[k])).join(","))].join("\r\n");
+    const url = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }));
+    Object.assign(document.createElement("a"), { href: url, download: `aceptaciones-legales-${todayYmd()}.csv` }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+  return { html, mount };
 }
 
 /* =============================== ESTADÍSTICAS =============================== */
@@ -905,8 +898,7 @@ async function vEstadisticas(_, query) {
   const list = query.tipo ? of(query.tipo) : rows;
   const label = `${fmtDay(from, { day: "numeric", month: "short", year: "numeric" })} – ${fmtDay(to, { day: "numeric", month: "short", year: "numeric" })}`;
 
-  const html = shell("estadisticas", "Estadísticas", `<a class="btn btn--sm btn--ghost" href="#/admin/actividad">Registro de cambios</a>
-      <button class="btn btn--sm btn--ghost" type="button" data-new="ingreso">Registrar ingreso</button><button class="btn btn--sm" type="button" data-new="gasto">Registrar gasto</button>`, `
+  const html = shell("estadisticas", "Estadísticas", `<button class="btn btn--sm btn--ghost" type="button" data-new="ingreso">Registrar ingreso</button><button class="btn btn--sm" type="button" data-new="gasto">Registrar gasto</button>`, `
     <form class="toolbar" id="perForm">
       <div class="seg" role="group" aria-label="Periodo">${[["mes", "Mes actual"], ["anterior", "Mes anterior"]].map(([k, v]) => `<a href="#/admin/estadisticas?p=${k}" class="${p === k ? "is-on" : ""}">${v}</a>`).join("")}</div>
       <input type="date" name="desde" value="${from}" aria-label="Desde"><input type="date" name="hasta" value="${to}" aria-label="Hasta">

@@ -700,3 +700,31 @@ td .muted { font-size: .8rem; }
 .done > :last-child { animation-delay: .3s; }
 .done__date strong { animation: pop .7s .3s cubic-bezier(.2,.7,.1,1.4) both; }
 @keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ---------- Nombre completo en el logo ---------- */
+.brand__word { font-size: 1.15rem; line-height: .95; text-align: left; }
+.brand__word small:first-child { margin: 0 0 3px; }
+@media (max-width: 720px) { .brand__word small { display: block; font-size: .5rem; letter-spacing: .3em; } .brand__word { font-size: 1rem; } }
+
+/* ---------- Legal ---------- */
+.consent { display: grid; gap: 10px; margin: 4px 0 6px; }
+.consent .check { align-items: flex-start; font-size: .9rem; line-height: 1.45; }
+.consent .check input { margin-top: 3px; flex: none; }
+.consent a, .legal__doc a { color: #1d5fd1; text-decoration: underline; }
+.legal { display: grid; gap: 32px; padding-block: 56px 80px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .legal { grid-template-columns: 240px minmax(0, 1fr); } .legal__nav { position: sticky; top: 120px; align-self: start; } }
+.legal__nav { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (min-width: 900px) { .legal__nav { flex-direction: column; } }
+.legal__nav a { padding: 8px 12px; border: 1px solid var(--line, #ddd6cc); text-decoration: none; font-size: .9rem; }
+.legal__nav a.is-on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.legal__doc { max-width: 760px; line-height: 1.65; }
+.legal__doc h1 { font-size: clamp(1.8rem, 4vw, 2.6rem); margin: 6px 0 20px; }
+.legal__doc h2 { font-size: 1.1rem; margin: 28px 0 8px; }
+.legal__doc ul { padding-left: 1.2em; }
+.legal__id { list-style: none; padding: 16px 18px !important; background: var(--paper, #ece7df); }
+.cookie-bar { position: fixed; z-index: 60; left: 16px; right: 16px; bottom: 16px; max-width: 560px; margin-inline: auto; background: var(--ink); color: var(--bg);
+  padding: 16px 18px; display: grid; gap: 12px; box-shadow: 0 10px 40px rgba(0,0,0,.3); font-size: .9rem; }
+.cookie-bar p { margin: 0; } .cookie-bar a { color: inherit; text-decoration: underline; }
+.cookie-bar .btn--ghost { color: var(--bg); border-color: rgba(255,255,255,.5); }
+.visit__nomap { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 24px; text-align: center; }
+.adm.is-busy .adm__main { opacity: .55; transition: opacity .15s .1s; pointer-events: none; }

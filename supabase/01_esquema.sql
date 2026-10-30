@@ -40,7 +40,7 @@ create table if not exists public.services (
   category_id  uuid references public.service_categories(id) on delete set null,
   name         text not null check (char_length(name) between 1 and 80),
   description  text check (char_length(description) <= 600),
-  duration_min int  not null default 30 check (duration_min between 5 and 480),   -- cada corte: 30 min
+  duration_min int  not null default 35 check (duration_min between 5 and 480),   -- 35 min por cliente
   price        numeric(12,2) check (price is null or price >= 0),   -- null = precio por definir
   image_url    text,
   active       boolean not null default true,
@@ -197,7 +197,7 @@ insert into public.settings (key, value) values
 )),
 -- Reglas operativas por defecto: revísalas en Admin → Configuración → Reservas.
 ('reservas', jsonb_build_object(
-  'intervalo_min', 30,               -- cada cuántos minutos se ofrece una hora de inicio
+  'intervalo_min', 35,               -- cada cuántos minutos se ofrece una hora de inicio
   'anticipacion_min_minutos', 60,    -- no se reserva con menos de 1 h
   'anticipacion_max_dias', 30,       -- hasta 30 días en el futuro
   'confirmacion_automatica', true,   -- false = quedan "pendiente" hasta que el admin confirme
@@ -336,7 +336,7 @@ language plpgsql stable security definer set search_path = public as $$
 declare
   r     jsonb := _cfg('reservas');
   v_dur int;
-  v_step int := greatest(5, coalesce((r->>'intervalo_min')::int, 30));
+  v_step int := greatest(5, coalesce((r->>'intervalo_min')::int, 35));
   v_min timestamptz := now() + make_interval(mins => coalesce((r->>'anticipacion_min_minutos')::int, 60));
   v_max date := (now() at time zone 'America/Bogota')::date + coalesce((r->>'anticipacion_max_dias')::int, 30);
 begin

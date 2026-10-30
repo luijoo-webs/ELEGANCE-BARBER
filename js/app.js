@@ -1,5 +1,6 @@
 /* Arranque y enrutador (#/ruta). Las rutas privadas se validan aquí y, sobre todo, en RLS. */
-import { CONFIGURED, sb, State, $, esc, safeUrl, loader, emptyState, friendly, loadPublic, loadProfile, isAdmin, waLink } from "./core.js";
+import { CONFIGURED, sb, State, $, esc, safeUrl, loader, emptyState, friendly, loadPublic, loadProfile, isAdmin, waLink, cookieChoice, setCookieChoice } from "./core.js";
+import { viewLegal } from "./legal.js";
 import { viewHome, mountHome, viewBooking, mountBooking, viewBooked } from "./public.js";
 import { viewAccount, processAuthLink, Recovery } from "./account.js";
 
@@ -41,7 +42,7 @@ function header() {
         </div>
         <a class="brand" href="#/" aria-label="${esc(n.nombre || "Elegance Barber")} — inicio">
           <img src="${esc(customLogo() || "assets/logo-crown-dark.png")}" alt="" class="brand__logo${customLogo() ? "" : " is-crown"}" width="40" height="40">
-          <span class="brand__word">Elegance<small>Barber</small></span></a>
+          <span class="brand__word"><small>The</small>Elegance<small>of the Barber</small></span></a>
         <div class="top__actions">
           ${safeUrl(n.instagram) ? `<a class="top__ic hide-sm" href="${esc(n.instagram)}" target="_blank" rel="noopener" aria-label="Instagram">${I.ig}</a>` : ""}
           ${wa ? `<a class="top__ic hide-sm" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="WhatsApp">${I.wa}</a>` : ""}
@@ -74,9 +75,14 @@ function footer() {
     <div><h4>Visítanos</h4><p>${esc(n.direccion || "Dirección por confirmar")}${n.ciudad ? `<br>${esc(n.ciudad)}` : ""}</p></div>
     <div><h4>Síguenos</h4><ul>${links.map(([k, u]) => `<li><a href="${esc(u)}" target="_blank" rel="noopener">${k}</a></li>`).join("")}</ul></div>
     <div><h4>Tu cita</h4><ul><li><a href="#/reservar">Reservar</a></li><li><a href="#/cuenta">Mi cuenta</a></li></ul></div>
+    <div><h4>Legal</h4><ul><li><a href="#/legal/terminos">Términos y condiciones</a></li><li><a href="#/legal/privacidad">Política de privacidad</a></li>
+      <li><a href="#/legal/cookies">Política de cookies</a></li><li><a href="#/legal/reembolsos">Cancelación y reembolsos</a></li>
+      <li><a href="https://www.sic.gov.co" target="_blank" rel="noopener">Superintendencia de Industria y Comercio</a></li></ul></div>
     <p class="foot__copy">© ${new Date().getFullYear()} ${esc(n.nombre_largo || n.nombre || "Elegance Barber")}${n.eslogan ? ` · ${esc(n.eslogan)}` : ""}</p>
   </div></footer>
   <a class="fab" href="#/reservar">Reservar cita</a>
+  ${cookieChoice() ? "" : `<div class="cookie-bar" role="region" aria-label="Cookies"><p>Usamos solo almacenamiento necesario para que el sitio funcione. El mapa de Google usa cookies propias de Google. <a href="#/legal/cookies">Más información</a></p>
+    <div class="row"><button type="button" class="btn btn--sm btn--ghost" data-cookies="min">Solo necesarias</button><button type="button" class="btn btn--sm" data-cookies="all">Aceptar todas</button></div></div>`}
   ${waLink() ? `<a class="wa-float" href="${esc(waLink())}" target="_blank" rel="noopener" aria-label="Escríbenos por WhatsApp">${I.wa}</a>` : ""}`;
 }
 
@@ -93,8 +99,9 @@ async function render() {
     if (route === "admin") {
       if (!State.user) { location.hash = "#/cuenta?volver=admin"; return; }
       if (!isAdmin()) html = `<section class="wrap narrow">${emptyState("No tienes permisos de administrador.", "Esta sección es solo para el equipo de la barbería.", `<a class="btn" href="#/">Ir al inicio</a>`)}</section>`;
-      else { app.innerHTML = loader("Cargando panel…"); const Admin = await import("./admin.js"); if (my !== seq) return; ({ html, mount } = await Admin.view(a || "resumen", b, query)); }
+      else { const inPanel = $(".adm"); if (inPanel) inPanel.classList.add("is-busy"); else app.innerHTML = loader("Cargando panel…"); const Admin = await import("./admin.js"); if (my !== seq) return; ({ html, mount } = await Admin.view(a || "resumen", b, query)); }
     } else if (route === "" || route === "inicio") { html = viewHome(); mount = mountHome; }
+    else if (route === "legal") html = viewLegal(a);
     else if (route === "reservar") { html = viewBooking(query); mount = mountBooking; }
     else if (route === "reserva" && a) { app.innerHTML = header() + loader(); html = State.user ? await viewBooked(a) : ""; if (!State.user) { location.hash = "#/cuenta"; return; } }
     else if (route === "cuenta") {
@@ -185,6 +192,12 @@ async function start() {
     if (["SIGNED_IN", "SIGNED_OUT", "USER_UPDATED"].includes(event)) setTimeout(async () => { await loadProfile(); if (event !== "SIGNED_IN") render(); }, 0);
   });
   window.addEventListener("hashchange", render);
+  document.addEventListener("click", (e) => {
+    const c = e.target.closest("[data-cookies]");
+    if (!c) return;
+    if (c.dataset.cookies === "reset") { try { localStorage.removeItem("eb_cookies"); } catch { /* */ } } else setCookieChoice(c.dataset.cookies);
+    render();
+  });
   render();
 }
 start();

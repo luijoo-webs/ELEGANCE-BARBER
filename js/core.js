@@ -215,3 +215,22 @@ export const waLink = () => {
   const n = State.settings.negocio || {}, d = String(n.telefono || "").replace(/\D/g, "");
   return safeUrl(n.whatsapp_url) || (d ? `https://wa.me/${d.length === 10 ? "57" + d : d}` : "");   // celular colombiano sin indicativo
 };
+
+/* ---------- Legal: cookies opcionales y consentimiento trazable ---------- */
+// Solo el mapa de Google pone cookies de terceros; la sesión usa almacenamiento local estrictamente necesario.
+export const cookieChoice = () => { try { return localStorage.getItem("eb_cookies"); } catch { return null; } };
+export const setCookieChoice = (v) => { try { localStorage.setItem("eb_cookies", v); } catch { /* modo privado */ } };
+export const mapAllowed = () => cookieChoice() === "all";
+
+export const LEGAL_VERSION = "2026-10-30";   // cámbiala cuando edites términos o privacidad
+export const consentChecks = () => `<div class="consent">
+  <label class="check"><input type="checkbox" name="acepta_terminos" required> <span>Acepto los <a href="#/legal/terminos" target="_blank" rel="noopener">términos y condiciones</a> y la <a href="#/legal/reembolsos" target="_blank" rel="noopener">política de cancelación y reembolso</a>.</span></label>
+  <label class="check"><input type="checkbox" name="acepta_privacidad" required> <span>Autorizo el tratamiento de mis datos según la <a href="#/legal/privacidad" target="_blank" rel="noopener">política de privacidad</a>.</span></label>
+</div>`;
+export const consentMissing = (f) => (!f.acepta_terminos ? "Debes aceptar los términos y condiciones." : !f.acepta_privacidad ? "Debes autorizar el tratamiento de tus datos (política de privacidad)." : "");
+// Guarda en Supabase quién aceptó, qué versión, cuándo, desde qué formulario, navegador e IP (la IP la toma el servidor).
+export async function logConsent(form, email, name) {
+  const { error } = await sb.rpc("log_consent", { p_documents: ["terminos", "privacidad"], p_version: LEGAL_VERSION, p_form: form,
+    p_email: email || null, p_full_name: name || null, p_page_url: location.href.slice(0, 500), p_user_agent: navigator.userAgent.slice(0, 500) });
+  if (error) throw error;
+}

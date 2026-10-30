@@ -202,12 +202,20 @@ await fails(as(null, `select * from finance_entries`), "permission denied");
 assert.equal((await as(U.admin, `select * from finance_entries`)).length, 2);
 ok("finanzas: solo el admin las ve y edita; montos deben ser positivos");
 
-console.log("Migraciones 04 y 05");
-const mig = ["04_duracion_30.sql", "05_servicios.sql"].map((f) => readFileSync(new URL(`../supabase/${f}`, import.meta.url), "utf8")).join(";\n");
+console.log("Migración 04 (negocio real + consentimiento)");
+const mig = readFileSync(new URL("../supabase/04_negocio_real.sql", import.meta.url), "utf8");
 await db.exec(mig); await db.exec(mig);
-const nuevos = await db.query(`select name, duration_min, price from services where name in ('Corte full', 'Keratina', 'Aminoácidos') order by sort_order`);
-assert.deepEqual(nuevos.rows.map((r) => [r.name, r.duration_min, r.price]), [["Corte full", 30, null], ["Keratina", 30, null], ["Aminoácidos", 30, null]]);
-assert.equal((await db.query(`select value->>'intervalo_min' v from settings where key = 'reservas'`)).rows[0].v, "30");
-ok("04/05 son re-ejecutables: 3 servicios nuevos de 30 min, sin duplicar, intervalo 30");
+const reales = await db.query(`select name, duration_min, price from services where description = 'Incluye lavado de cabello.' order by sort_order`);
+assert.equal(reales.rows.length, 13); assert.ok(reales.rows.every((r) => r.duration_min === 35));
+assert.equal(Number(reales.rows.find((r) => r.name === "Corte y keratina").price), 60000);
+assert.equal((await db.query(`select value->>'intervalo_min' v from settings where key = 'reservas'`)).rows[0].v, "35");
+ok("04 es re-ejecutable: 13 servicios reales de 35 min sin duplicar, intervalo 35");
+await as(null, `select log_consent(array['terminos','privacidad'], '2026-10', 'registro', 'X@Y.co', 'Ana', 'http://x', 'UA')`);
+const cl = await as(U.admin, `select document from consent_log where email = 'x@y.co' order by document`);
+assert.deepEqual(cl.map((r) => r.document), ["privacidad", "terminos"]);
+assert.equal((await as(U.ana, `select * from consent_log`)).length, 0);
+await fails(as(U.ana, `insert into consent_log(document, version, form) values ('terminos','1','registro')`), "permission denied");
+await fails(as(U.admin, `delete from consent_log`), "permission denied");
+ok("consentimiento: se registra por función, solo el admin lo lee, nadie lo edita ni borra");
 
 console.log(`\n${passed} pruebas OK`);

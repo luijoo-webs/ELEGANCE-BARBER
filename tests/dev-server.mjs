@@ -26,7 +26,7 @@ await db.exec(`
   grant execute on function auth.uid() to anon, authenticated;
   alter default privileges in schema public grant all on tables to anon, authenticated;
 `);
-for (const f of ["01_esquema.sql", "03_finanzas.sql", "04_duracion_30.sql", "05_servicios.sql"]) await db.exec(readFileSync(join(ROOT, "supabase", f), "utf8"));
+for (const f of ["01_esquema.sql", "03_finanzas.sql", "04_negocio_real.sql"]) await db.exec(readFileSync(join(ROOT, "supabase", f), "utf8"));
 
 /* ---------- Auth simulado ---------- */
 const passwords = new Map();
@@ -226,17 +226,8 @@ createServer(async (req, res) => {
   const admin = await signUp(ADMIN.email, ADMIN.password, { full_name: "Admin Prueba" });
   await db.query("update profiles set role='admin' where id=$1", [admin.id]);
   await db.exec(`
-    insert into service_categories (name, sort_order) values ('Cortes (prueba)', 1), ('Barba (prueba)', 2);
-    insert into services (category_id, name, description, duration_min, price, sort_order)
-      select id, 'Corte clásico (prueba)', 'Servicio ficticio para probar la interfaz.', 30, 30000, 1 from service_categories where name='Cortes (prueba)';
-    insert into services (category_id, name, description, duration_min, price, sort_order)
-      select id, 'Corte + diseño (prueba)', 'Precio sin definir a propósito.', 30, null, 2 from service_categories where name='Cortes (prueba)';
-    insert into services (category_id, name, duration_min, price, sort_order)
-      select id, 'Perfilado de barba (prueba)', 30, 15000, 3 from service_categories where name='Barba (prueba)';
-    insert into barbers (name, specialties, sort_order) values ('Barbero A (prueba)', '{fade,barba}', 1), ('Barbero B (prueba)', '{diseño}', 2);
-    insert into schedules (barber_id, weekday, start_time, end_time) select null, g, '09:00', '19:00' from generate_series(1,6) g;
-    insert into schedules (barber_id, weekday, start_time, end_time) select b.id, g, t.s, t.e from barbers b, generate_series(1,5) g,
-      (values ('09:00'::time,'13:00'::time), ('14:00','19:00')) t(s,e) where b.name='Barbero B (prueba)';
+    -- Servicios, barberos y horario general vienen de 04_negocio_real.sql.
+    update barbers set name = name || ' (prueba)';
   `);
   console.log(`Servidor de desarrollo: http://127.0.0.1:${PORT}  ·  admin local: ${ADMIN.email} (contraseña en este archivo)`);
 });

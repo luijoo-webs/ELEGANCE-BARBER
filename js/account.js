@@ -1,7 +1,7 @@
 /* Cuentas de cliente: registro, sesión, recuperación, perfil y mis citas. */
 import {
   sb, State, SITE_URL, $, esc, friendly, toast, loader, emptyState, busy, setMsg, formData, confirmDialog, modal,
-  fmtDate, fmtTime, durLabel, priceLabel, statusBadge, ymd, loadProfile, waLink
+  fmtDate, fmtTime, durLabel, priceLabel, statusBadge, ymd, loadProfile, waLink, consentChecks, consentMissing, logConsent
 } from "./core.js";
 import { mountSlotPicker } from "./public.js";
 
@@ -51,8 +51,9 @@ function viewRegister(q) {
     <form class="form" id="registerForm" novalidate>
       <label class="field"><span>Nombre completo</span><input name="full_name" required minlength="2" maxlength="120" autocomplete="name"></label>
       <label class="field"><span>Correo electrónico</span><input type="email" name="email" required autocomplete="email"></label>
-      <label class="field"><span>Celular (opcional)</span><input type="tel" name="phone" maxlength="30" autocomplete="tel" inputmode="tel"></label>
+      <label class="field"><span>Celular / WhatsApp</span><input type="tel" name="phone" required minlength="7" maxlength="30" autocomplete="tel" inputmode="tel"></label>
       ${pw("password", "Contraseña (mín. 8, con letras y números)", "new-password")}
+      ${consentChecks()}
       <button class="btn btn--block" type="submit" data-busy="Creando cuenta…">Crear cuenta</button>
       <p class="form-msg" id="authMsg" role="alert"></p>
     </form>
@@ -92,7 +93,10 @@ function mountAuth(q) {
     if (f.full_name.trim().length < 2) return msg("Escribe tu nombre.");
     if (!validEmail(f.email)) return msg("Escribe un correo válido.");
     if (!validPw(f.password)) return msg("La contraseña debe tener al menos 8 caracteres, con letras y números.");
+    if (f.phone.replace(/\D/g, "").length < 7) return msg("Escribe un celular válido.");
+    if (consentMissing(f)) return msg(consentMissing(f));
     busy(e.submitter, async () => {
+      try { await logConsent("registro", f.email.trim(), f.full_name.trim()); } catch (ce) { return msg(friendly(ce)); }
       // El rol NO se envía: el servidor siempre crea cuentas de cliente.
       const { data, error } = await sb.auth.signUp({ email: f.email.trim(), password: f.password,
         options: { emailRedirectTo: SITE_URL, data: { full_name: f.full_name.trim(), phone: f.phone.trim() } } });
