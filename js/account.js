@@ -178,7 +178,7 @@ async function viewDashboard() {
   const html = `<section class="account wrap">
     <header class="account__head">
       <div><p class="eyebrow">Mi cuenta</p><h1>Hola, ${esc((p.full_name || "").split(" ")[0] || "cliente")}</h1></div>
-      <div class="row">${p.role === "admin" ? `<a class="btn btn--ghost" href="#/admin">Panel administrativo</a>` : ""}<a class="btn" href="#/reservar">Nueva reserva</a></div>
+      <div class="row"><a class="btn" href="#/reservar">Nueva reserva</a></div>
     </header>
     <div class="account__grid">
       <div>
