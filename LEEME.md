@@ -104,6 +104,7 @@ Reglas por defecto (cámbialas en Admin → Configuración → Reglas de reserva
 ## 7. Publicar
 
 Igual que La Percha: subir `index.html`, `css/`, `js/` a GitHub Pages (o Cloudflare Pages) y apuntar el dominio. No hace falta compilar.
+**Al publicar cambios en `js/` o `css/`**, cambia la versión `?v=...` (la misma en todos los `import` de `js/*.js` y en `index.html`); si no, los navegadores siguen usando la copia vieja guardada.
 Después de publicar, actualiza *Site URL* y *Redirect URLs* en Supabase con el dominio final.
 La carpeta `tests/` no contiene secretos de producción (la cuenta admin que ves ahí solo existe en la base local en memoria), pero puedes excluirla del sitio publicado.
 

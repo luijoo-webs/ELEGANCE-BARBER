@@ -3,7 +3,7 @@ import {
   sb, State, $, $$, esc, safeUrl, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday,
   fmtDay, fmtTime, fmtDate, hhmm, ymd, friendly, toast, loader, emptyState, busy, scheduleByDay, barberWorkDays, waLink, setMsg,
   mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData
-} from "./core.js";
+} from "./core.js?v=20261031a";
 
 const N = () => State.settings.negocio || {};
 const R = () => State.settings.reservas || {};

@@ -1,5 +1,5 @@
 /* Documentos legales (Colombia): términos, privacidad (Ley 1581 de 2012), cookies y reembolsos (Ley 1480 de 2011). */
-import { State, esc, safeUrl, waLink, LEGAL_VERSION } from "./core.js";
+import { State, esc, safeUrl, waLink, LEGAL_VERSION } from "./core.js?v=20261031a";
 
 const PEND = `<em class="is-pending">pendiente de completar en Admin → Configuración</em>`;
 function who() {

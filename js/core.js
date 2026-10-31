@@ -1,6 +1,6 @@
 /* Núcleo compartido: conexión, estado, utilidades de fecha (America/Bogota), errores y UI básica. */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js?v=20261031a";
 
 export const CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 export const sb = CONFIGURED
