@@ -55,7 +55,7 @@ export function viewHome() {
     r.confirmacion_automatica === false ? "La barbería confirma tu cita." : "Confirmación inmediata."
   ].filter(Boolean);
   const slides = [
-    { kicker: "Barbería", title: ["The Elegance", "of the Barber's"], imgs: [heroImg || F("silla"), F("svc-cortec"), F("afeitado"), F("svc-corte3")] },
+    { kicker: "Barbería", title: ["The Elegance", "of the Barber's"], imgs: [heroImg || F("hero-fade"), F("hero-navaja"), F("hero-local"), F("hero-guantes")] },
     { kicker: brand, title: [slogan], imgs: [F("svc-fade"), F("cliente"), F("svc-afinar"), F("svc-barba")] }
   ];
   const pillars = [
@@ -221,8 +221,8 @@ document.addEventListener("click", (e) => {
 // Foto del servicio: la subida en el panel o, si no hay, una de ambiente según el nombre.
 // Una foto distinta por servicio: reales de la barbería en los cortes, de Unsplash en el resto.
 const SVC_PHOTO = [
-  [/pigment/, F("srv-pigmentacion")], [/ceja/, F("srv-cejas")], [/mascarilla/, F("srv-mascarilla")], [/cepill/, F("srv-cepillado")],
-  [/corte y keratina/, REAL("mullet-barba")], [/querat|keratin/, F("srv-keratina")], [/niñ/, REAL("fade-diseno")],
+  [/pigment/, F("srv2-pigmentacion")], [/ceja/, F("srv2-cejas")], [/mascarilla/, F("srv2-mascarilla")], [/cepill/, F("srv-cepillado")],
+  [/corte y keratina/, REAL("mullet-barba")], [/querat|keratin/, F("srv2-keratina")], [/niñ/, REAL("fade-diseno")],
   [/corte y barba/, REAL("mohicano-barba")], [/barba/, F("srv-barba")], [/tijera/, REAL("pompadour")],
   [/secado|planchado/, REAL("clasico-linea")], [/cerquillo/, REAL("cerquillo")]
 ];
