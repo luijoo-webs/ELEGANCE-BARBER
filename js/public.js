@@ -64,7 +64,9 @@ export function viewHome() {
     r.confirmacion_automatica === false ? [ICON.check, "Te confirmamos", "La barbería revisa y confirma tu cita."] : [ICON.check, "Confirmación inmediata", "Tu cita queda lista al instante."],
     r.cancelacion_min_horas != null && [ICON.clock, "Cambios sin enredos", `Cancela${r.reprogramacion_permitida === false ? "" : " o reprograma"} desde tu cuenta hasta ${r.cancelacion_min_horas} h antes.`]
   ].filter(Boolean);
-  const igTiles = [...gallery.map((g) => g.image_url), ...["svc-corte3", "svc-fade", "svc-barba", "svc-cortec", "svc-peinado", "corte"].map(F)].slice(0, 6);
+  // Trabajos reales: fotos de la Galería primero, luego videos y fotos de la barbería.
+  const igTiles = [...gallery.map((g) => g.image_url), "assets/videos/trabajo-1.mp4", REAL("mullet-fade"), "assets/videos/trabajo-2.mp4",
+    REAL("mohicano-joven"), "assets/videos/trabajo-3.mp4", REAL("linea-celular")].slice(0, 6);
   const BARBER_BG = ["tijeras", "silla", "svc-peine", "svc-guantes"].map(F);
   const place = [n.direccion, n.ciudad].filter(Boolean).join(", ");
   const mapQ = place ? (n.ciudad ? place : `${place}, Colombia`) : "";
@@ -138,7 +140,9 @@ export function viewHome() {
   ${ig || gallery.length ? `
   <section class="insta" id="galeria" aria-labelledby="t-ig">
     <div class="wrap">${head(igH ? `@${esc(igH)}` : "Nuestros trabajos", "t-ig", ig ? `<a class="lp-link" href="${esc(n.instagram)}" target="_blank" rel="noopener">Síguenos en Instagram</a>` : "")}</div>
-    <div class="insta__grid">${igTiles.map((src, k) => `<a class="insta__tile rv" style="--i:${k}" ${ig ? `href="${esc(n.instagram)}" target="_blank" rel="noopener"` : `href="#/reservar"`} aria-label="${ig ? "Ver Instagram" : "Reservar"}"><img src="${esc(src)}" alt="" loading="lazy"><span>${ICON.ig}</span></a>`).join("")}</div>
+    <div class="insta__grid">${igTiles.map((src, k) => `<a class="insta__tile rv" style="--i:${k}" ${ig ? `href="${esc(n.instagram)}" target="_blank" rel="noopener"` : `href="#/reservar"`} aria-label="${ig ? "Ver Instagram" : "Reservar"}">${/\.mp4$/.test(src)
+      ? `<video src="${esc(src)}" poster="${esc(src.replace(/mp4$/, "jpg"))}" muted loop playsinline preload="none" aria-hidden="true"></video>`
+      : `<img src="${esc(src)}" alt="" loading="lazy">`}<span>${ICON.ig}</span></a>`).join("")}</div>
   </section>` : ""}
 
   <section class="visit" id="visitanos" aria-labelledby="t-visit">
@@ -176,6 +180,15 @@ export function viewHome() {
 
 // Slider de la portada: cambia cada 6 s, se pausa al pasar el mouse o con el foco.
 export function mountHome() {
+  // Videos de trabajos: se reproducen solo cuando se ven (y nunca con movimiento reducido).
+  const vids = $$(".insta__tile video");
+  if (vids.length && !matchMedia("(prefers-reduced-motion: reduce)").matches && "IntersectionObserver" in window) {
+    const vo = new IntersectionObserver((es) => es.forEach((e) => (e.isIntersecting ? e.target.play().catch(() => {}) : e.target.pause())), { threshold: 0.3 });
+    vids.forEach((v) => {
+      vo.observe(v);
+      if (v.src.endsWith("trabajo-3.mp4")) v.addEventListener("timeupdate", () => { if (v.currentTime > 9.8) v.currentTime = 0; });   // corta el cierre de CapCut
+    });
+  }
   const hx = $(".hx");
   if (!hx) return;
   const slides = $$(".hx__slide", hx), dots = $$("[data-go]", hx);
@@ -211,7 +224,7 @@ const SVC_PHOTO = [
   [/pigment/, F("srv-pigmentacion")], [/ceja/, F("srv-cejas")], [/mascarilla/, F("srv-mascarilla")], [/cepill/, F("srv-cepillado")],
   [/corte y keratina/, REAL("mullet-barba")], [/querat|keratin/, F("srv-keratina")], [/niñ/, REAL("fade-diseno")],
   [/corte y barba/, REAL("mohicano-barba")], [/barba/, F("srv-barba")], [/tijera/, REAL("pompadour")],
-  [/secado|planchado/, REAL("clasico-linea")], [/cerquillo/, REAL("diseno-nota")]
+  [/secado|planchado/, REAL("clasico-linea")], [/cerquillo/, REAL("cerquillo")]
 ];
 function svcPhoto(s) {
   if (safeUrl(s.image_url)) return s.image_url;
