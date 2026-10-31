@@ -55,8 +55,8 @@ export function viewHome() {
     r.confirmacion_automatica === false ? "La barbería confirma tu cita." : "Confirmación inmediata."
   ].filter(Boolean);
   const slides = [
-    { kicker: "Barbería", title: ["The Elegance", "of the Barber's"], imgs: [heroImg || REAL("low-fade"), REAL("mohicano-barba"), REAL("clasico-linea"), REAL("pompadour")] },
-    { kicker: brand, title: [slogan], imgs: [REAL("fade-diseno"), REAL("mullet-barba"), REAL("diseno-nota"), F("silla")] }
+    { kicker: "Barbería", title: ["The Elegance", "of the Barber's"], imgs: [heroImg || F("silla"), F("svc-cortec"), F("afeitado"), F("svc-corte3")] },
+    { kicker: brand, title: [slogan], imgs: [F("svc-fade"), F("cliente"), F("svc-afinar"), F("svc-barba")] }
   ];
   const pillars = [
     [ICON.cal, "Reserva en línea", "Eliges servicio, barbero y hora desde el celular, sin llamadas."],
@@ -64,7 +64,7 @@ export function viewHome() {
     r.confirmacion_automatica === false ? [ICON.check, "Te confirmamos", "La barbería revisa y confirma tu cita."] : [ICON.check, "Confirmación inmediata", "Tu cita queda lista al instante."],
     r.cancelacion_min_horas != null && [ICON.clock, "Cambios sin enredos", `Cancela${r.reprogramacion_permitida === false ? "" : " o reprograma"} desde tu cuenta hasta ${r.cancelacion_min_horas} h antes.`]
   ].filter(Boolean);
-  const igTiles = [...gallery.map((g) => g.image_url), ...["mohicano-barba", "fade-diseno", "clasico-linea", "diseno-nota", "low-fade", "mullet-barba"].map(REAL)].slice(0, 6);
+  const igTiles = [...gallery.map((g) => g.image_url), ...["svc-corte3", "svc-fade", "svc-barba", "svc-cortec", "svc-peinado", "corte"].map(F)].slice(0, 6);
   const BARBER_BG = ["tijeras", "silla", "svc-peine", "svc-guantes"].map(F);
   const place = [n.direccion, n.ciudad].filter(Boolean).join(", ");
   const mapQ = place ? (n.ciudad ? place : `${place}, Colombia`) : "";
@@ -206,11 +206,12 @@ document.addEventListener("click", (e) => {
 });
 
 // Foto del servicio: la subida en el panel o, si no hay, una de ambiente según el nombre.
-// Foto por tipo de servicio (la primera regla que coincide); reales cuando hay una que corresponda.
+// Una foto distinta por servicio: reales de la barbería en los cortes, de Unsplash en el resto.
 const SVC_PHOTO = [
-  [/pigment|diseñ/, REAL("diseno-nota")], [/niñ|nin[oa]/, REAL("fade-diseno")], [/corte.*barba|barba.*corte/, REAL("mohicano-barba")], [/barba|afeit|perfil/, REAL("mullet-barba")],
-  [/tijera/, REAL("pompadour")], [/secado|planchado/, REAL("clasico-linea")],
-  [/ceja/, F("svc-afinar")], [/cepill/, F("svc-peinado")], [/querat|keratin|mascarilla|tratam/, F("svc-tratamiento")]
+  [/pigment/, F("srv-pigmentacion")], [/ceja/, F("srv-cejas")], [/mascarilla/, F("srv-mascarilla")], [/cepill/, F("srv-cepillado")],
+  [/corte y keratina/, REAL("mullet-barba")], [/querat|keratin/, F("srv-keratina")], [/niñ/, REAL("fade-diseno")],
+  [/corte y barba/, REAL("mohicano-barba")], [/barba/, F("srv-barba")], [/tijera/, REAL("pompadour")],
+  [/secado|planchado/, REAL("clasico-linea")], [/cerquillo/, REAL("diseno-nota")]
 ];
 function svcPhoto(s) {
   if (safeUrl(s.image_url)) return s.image_url;
@@ -329,7 +330,7 @@ export function viewBooking(query) {
 }
 
 const STEPS = ["Servicio", "Barbero", "Fecha y hora", "Confirmar"];
-const thumb = (url, name, cls) => `<span class="${cls}">${safeUrl(url) ? `<img src="${esc(url)}" alt="" loading="lazy">` : `<span aria-hidden="true">${esc(initials(name))}</span>`}</span>`;
+const thumb = (url, name, cls) => `<span class="${cls}">${safeUrl(url) || /^assets\//.test(url || "") ? `<img src="${esc(url)}" alt="" loading="lazy">` : `<span aria-hidden="true">${esc(initials(name))}</span>`}</span>`;
 
 export function mountBooking() {
   const steps = $("#steps"), summary = $("#summary"), progress = $("#progress"), bar = $("#bookBar");
