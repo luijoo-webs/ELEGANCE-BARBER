@@ -218,4 +218,16 @@ await fails(as(U.ana, `insert into consent_log(document, version, form) values (
 await fails(as(U.admin, `delete from consent_log`), "permission denied");
 ok("consentimiento: se registra por función, solo el admin lo lee, nadie lo edita ni borra");
 
+console.log("Migración 05 (adicionales)");
+const m5 = readFileSync(new URL("../supabase/05_adicionales.sql", import.meta.url), "utf8");
+await db.exec(m5); await db.exec(m5);
+const [{ book_appointment: mineId }] = await as(U.ana, `select book_appointment($1, $2, $3)`, [svc.id, b1.id, `${nextDay}T11:15:00-05:00`]); const mine = { id: mineId };
+await as(U.ana, `select set_appointment_extras($1, $2::jsonb)`, [mine.id, JSON.stringify([{ n: "Coronita", q: 2, p: 4500 }])]);
+assert.deepEqual((await db.query(`select extras from appointments where id=$1`, [mine.id])).rows[0].extras, [{ n: "Coronita", q: 2, p: 4500 }]);
+await fails(as(U.beto, `select set_appointment_extras($1, '[]'::jsonb)`, [mine.id]), "CITA_NO_ENCONTRADA");
+await fails(as(U.ana, `select set_appointment_extras($1, '[{"n":"X","q":50,"p":1}]'::jsonb)`, [mine.id]), "ADICIONALES_INVALIDOS");
+await fails(as(U.ana, `select set_appointment_extras($1, '{"n":"X"}'::jsonb)`, [mine.id]), "ADICIONALES_INVALIDOS");
+await fails(as(null, `select set_appointment_extras($1, '[]'::jsonb)`, [mine.id]), "permission denied");
+ok("adicionales: solo el dueño de la cita, cantidades 1–10, formato validado");
+
 console.log(`\n${passed} pruebas OK`);

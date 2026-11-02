@@ -1,6 +1,6 @@
 /* Núcleo compartido: conexión, estado, utilidades de fecha (America/Bogota), errores y UI básica. */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js?v=20261102a";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js?v=20261102b";
 
 export const CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 export const sb = CONFIGURED
@@ -59,6 +59,8 @@ export const safeUrl = (u) => (/^(https?:|mailto:|tel:)/i.test(String(u || "").t
 
 export const money = (v) => v == null || v === "" ? null
   : new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(Number(v));
+export const extrasText = (x) => (x || []).map((e) => `${e.q}× ${e.n}`).join(", ");   // adicionales [{n,q,p}] de una cita
+export const extrasTotal = (x) => (x || []).reduce((t, e) => t + e.q * e.p, 0);
 export const priceLabel = (v) => money(v) ?? "Precio por confirmar";
 export const durLabel = (m) => m >= 60 ? `${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ""}` : `${m} min`;
 

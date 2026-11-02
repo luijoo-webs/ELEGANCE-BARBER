@@ -733,3 +733,18 @@ td .muted { font-size: .8rem; }
 .cat-card--shop .cat-card__img { aspect-ratio: 5 / 6; }
 .cat-card--shop .cat-card__img img { filter: none; }
 .cat-card--shop .cat-card__foot { justify-content: flex-start; }
+
+/* Adicionales en la reserva */
+.extras{border:1px solid rgba(20,19,18,.15);border-radius:12px;padding:12px 14px}
+.extras summary{cursor:pointer;font-weight:700;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.extras__list{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;max-height:360px;overflow:auto}
+.extras__list li{display:flex;align-items:center;gap:10px;padding:6px;border-radius:10px;background:rgba(20,19,18,.04)}
+.extras__pic{width:48px;height:52px;overflow:hidden;border-radius:6px;flex:none;position:relative;background:#fff}
+.extras__pic img{position:absolute;width:74px;height:89px;max-width:none;left:-13px;top:-34px}   /* muestra solo el panel blanco con el empaque */
+.extras__name{flex:1;font-size:.9rem;line-height:1.25}
+.extras__name small{display:block;color:var(--muted,#6b665f)}
+.qty{display:flex;align-items:center;gap:6px}
+.qty button{width:32px;height:32px;border-radius:50%;border:1px solid currentColor;background:none;font-size:1.1rem;cursor:pointer;color:inherit}
+.qty button:disabled{opacity:.3;cursor:default}
+.qty b{min-width:1.2em;text-align:center}
+.extras__total{margin:10px 0 0}

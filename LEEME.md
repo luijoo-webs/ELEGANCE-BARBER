@@ -18,6 +18,7 @@ Mismo modelo de despliegue que La Percha: sitio estático (sin compilación) →
 | `supabase/02_storage.sql` | Bucket `media` para fotos (lectura pública, escritura solo admin). |
 | `supabase/03_finanzas.sql` | Tabla `finance_entries` (ingresos y gastos, solo admin) y función `admin_delete_appointment` (borra solo citas canceladas). |
 | `supabase/04_negocio_real.sql` | Datos reales: 13 servicios con precio (lavado incluido), 35 min por cliente, horario lun–sáb 9:30–20:00, 2 barberos por nombrar, nombre completo, y la tabla `consent_log` (registro legal de aceptaciones). Re-ejecutable. |
+| `supabase/05_adicionales.sql` | Adicionales (snacks y bebidas) que el cliente pide al reservar: columna `appointments.extras` y función `set_appointment_extras` (solo su propia cita activa). Re-ejecutable. |
 | `js/legal.js` | Términos, privacidad (Ley 1581), cookies y cancelación/reembolso (Ley 1480), en `#/legal/...`. |
 | `supabase/correos/` | Plantillas de los correos de Auth. |
 | `tests/` | Pruebas del SQL y servidor local de desarrollo (no es parte del sitio). |
@@ -49,7 +50,7 @@ Mientras no haya horario general, servicios y barberos activos, la web muestra �
 ## 3. Puesta en marcha (una vez)
 
 1. **Crear proyecto** en Supabase (región São Paulo recomendada para Colombia).
-2. **SQL Editor** → pegar y ejecutar `supabase/01_esquema.sql` completo. Luego `supabase/02_storage.sql`, `supabase/03_finanzas.sql` y `supabase/04_negocio_real.sql`.
+2. **SQL Editor** → pegar y ejecutar `supabase/01_esquema.sql` completo. Luego `supabase/02_storage.sql`, `supabase/03_finanzas.sql`, `supabase/04_negocio_real.sql` y `supabase/05_adicionales.sql`.
    Los tres son re-ejecutables y no borran datos.
 3. **Project Settings → API**: copiar *Project URL* y la clave *anon / publishable* en `js/config.js`.
    ⚠️ Nunca pongas la `service_role` ni la contraseña de la base de datos en el código ni en Git.
@@ -112,7 +113,7 @@ La carpeta `tests/` no contiene secretos de producción (la cuenta admin que ves
 
 ```bash
 cd tests && npm install
-npm test          # 43 pruebas del esquema SQL (reservas, solapes, RLS, roles, estados, pendientes)
+npm test          # 44 pruebas del esquema SQL (reservas, solapes, RLS, roles, estados, pendientes)
 npm run dev       # web completa en http://127.0.0.1:5180 con un Supabase simulado sobre el mismo SQL
 ```
 El servidor local usa datos ficticios marcados “(prueba)” y una cuenta admin local definida en `tests/dev-server.mjs`. No implementa Storage (subida de fotos) ni Realtime.

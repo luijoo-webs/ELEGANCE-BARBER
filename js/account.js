@@ -2,8 +2,8 @@
 import {
   sb, State, SITE_URL, $, esc, friendly, toast, loader, emptyState, busy, setMsg, formData, confirmDialog, modal,
   fmtDate, fmtTime, durLabel, priceLabel, statusBadge, ymd, loadProfile, waLink, consentChecks, consentMissing, logConsent
-} from "./core.js?v=20261102a";
-import { mountSlotPicker } from "./public.js?v=20261102a";
+} from "./core.js?v=20261102b";
+import { mountSlotPicker } from "./public.js?v=20261102b";
 
 const back = (q) => (q.volver === "reservar" ? "#/reservar" : "#/cuenta");
 const R = () => State.settings.reservas || {};

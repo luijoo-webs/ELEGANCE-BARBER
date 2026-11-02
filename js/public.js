@@ -2,8 +2,8 @@
 import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday,
   fmtDay, fmtTime, fmtDate, hhmm, ymd, friendly, toast, loader, emptyState, busy, scheduleByDay, barberWorkDays, waLink, setMsg,
-  mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData
-} from "./core.js?v=20261102a";
+  mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal
+} from "./core.js?v=20261102b";
 
 const N = () => State.settings.negocio || {};
 const R = () => State.settings.reservas || {};
@@ -121,7 +121,7 @@ export function viewHome() {
       <p class="muted rv" style="margin:-8px 0 22px">Snacks y bebidas para disfrutar en la barbería. Se pagan allá, junto con tu servicio.</p>
       <div class="chips rv" role="group" aria-label="Filtrar productos"><button type="button" class="chip is-on" data-cat-filter="" aria-pressed="true">Todos</button>${Object.keys(SHOP).map((c) => `<button type="button" class="chip" data-cat-filter="${c}" aria-pressed="false">${c}</button>`).join("")}</div>
       <ul class="catalog">${Object.entries(SHOP).flatMap(([cat, items]) => items.map(([name, price, img]) => [cat, name, price, img])).map(([cat, name, price, img], k) => `<li class="rv" style="--i:${k % 4}" data-cat="${cat}"><div class="cat-card cat-card--shop">
-        <figure class="cat-card__img"><img src="assets/tienda/${img}.jpg" alt="${esc(name)}" loading="lazy"><span class="cat-card__tag">${cat}</span></figure>
+        <figure class="cat-card__img"><img src="assets/tienda/${img}.jpg?v=2" alt="${esc(name)}" loading="lazy"><span class="cat-card__tag">${cat}</span></figure>
         <div class="cat-card__body"><h4>${esc(name)}</h4><div class="cat-card__foot"><span class="cat-card__price">${money(price)}</span></div></div></div></li>`).join("")}</ul>
     </div>
   </section>
@@ -464,13 +464,32 @@ export function mountBooking() {
         <label class="field"><span>Celular / WhatsApp</span><input name="phone" type="tel" required minlength="7" maxlength="30" autocomplete="tel" inputmode="tel" value="${esc(p.phone || "")}"></label></div>
       <label class="field"><span>Nota para el barbero (opcional)</span>
         <textarea name="notes" maxlength="500" rows="2" placeholder="Ej.: quiero mantener el largo arriba">${esc(b.notes || "")}</textarea></label>
+      ${extrasPicker(b.extras || {})}
       <p class="muted small">Cuenta: <strong>${esc(State.user.email)}</strong>. El pago se hace en la barbería.</p>
       ${consentChecks()}
       <button class="btn btn--lg btn--block" type="submit" data-busy="Confirmando…">Confirmar cita</button>
       <p class="form-msg" id="confirmMsg" role="alert"></p></form>`;
   }
 
+  // Adicionales: {nombre: cantidad} en la reserva guardada; se actualiza en el sitio para no borrar lo que ya se escribió.
+  const SHOP_ITEMS = Object.values(SHOP).flat();
+  const exTotal = (ex) => { const t = SHOP_ITEMS.reduce((s, [n, p]) => s + (ex[n] || 0) * p, 0); return t ? `Adicionales: <strong>${money(t)}</strong> · se pagan en la barbería` : ""; };
+  function extrasPicker(ex) {
+    return `<details class="extras" ${Object.keys(ex).length ? "open" : ""}><summary>¿Deseas algún adicional? <span class="muted small">Snacks y bebidas para después del corte</span></summary>
+      <ul class="extras__list">${SHOP_ITEMS.map(([n, p, img]) => `<li><span class="extras__pic"><img src="assets/tienda/${img}.jpg?v=2" alt="" loading="lazy"></span><span class="extras__name">${esc(n)}<small>${money(p)}</small></span>
+        <span class="qty"><button type="button" data-x="${esc(n)}" data-d="-1" aria-label="Quitar ${esc(n)}" ${ex[n] ? "" : "disabled"}>−</button><b aria-live="polite">${ex[n] || 0}</b><button type="button" data-x="${esc(n)}" data-d="1" aria-label="Agregar ${esc(n)}">+</button></span></li>`).join("")}</ul>
+      <p class="extras__total" id="exTotal">${exTotal(ex)}</p></details>`;
+  }
+
   steps.addEventListener("click", (e) => {
+    const x = e.target.closest("[data-x]");
+    if (x) {
+      const ex = { ...(Booking.get().extras || {}) }, n = x.dataset.x, li = x.closest("li");
+      ex[n] = Math.min(10, Math.max(0, (ex[n] || 0) + +x.dataset.d)); if (!ex[n]) delete ex[n];
+      Booking.set({ extras: ex });
+      $("b", li).textContent = ex[n] || 0; $("[data-d='-1']", li).disabled = !ex[n]; $("#exTotal").innerHTML = exTotal(ex);
+      return;
+    }
     const o = e.target.closest("[data-open]");
     if (o) return go(+o.dataset.open);
     const s = e.target.closest("[data-svc]");
@@ -498,6 +517,8 @@ export function mountBooking() {
         if (/HORARIO_OCUPADO|ANTICIPACION|BLOQUEADO|FUERA_DE_HORARIO/.test(error.message)) { Booking.set({ start: null }); toast(friendly(error), "err"); go(null); }
         return;
       }
+      const extras = SHOP_ITEMS.filter(([n]) => b.extras?.[n]).map(([n, p]) => ({ n, q: b.extras[n], p }));
+      if (extras.length) { const { error: xe } = await sb.rpc("set_appointment_extras", { p_id: data, p_extras: extras }); if (xe) toast("Tu cita quedó reservada, pero no pudimos guardar los adicionales. Pídelos en la barbería.", "err"); }
       Booking.clear();
       location.hash = `#/reserva/${data}`;
     });
@@ -520,6 +541,7 @@ export async function viewBooked(id) {
         <div><dt>Servicio</dt><dd>${esc(a.service_name)} · ${durLabel(a.duration_min)}</dd></div>
         <div><dt>Barbero</dt><dd>${esc(a.barber_name)}</dd></div>
         <div><dt>Precio</dt><dd>${priceLabel(a.price)}</dd></div>
+        ${a.extras?.length ? `<div><dt>Adicionales</dt><dd>${esc(extrasText(a.extras))} · ${money(extrasTotal(a.extras))}</dd></div>` : ""}
         ${N().direccion ? `<div><dt>Lugar</dt><dd>${esc(N().direccion)}</dd></div>` : ""}
       </dl>
     </div>

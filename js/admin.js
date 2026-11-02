@@ -2,8 +2,8 @@
 import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday, ymd, toIso, hhmm,
   fmtTime, fmtDate, fmtDay, fmtDateTime, minutes, fromMinutes, shortTime, STATUS, statusBadge, friendly, toast, loader, emptyState,
-  formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin
-} from "./core.js?v=20261102a";
+  formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin, extrasText, extrasTotal
+} from "./core.js?v=20261102b";
 
 const SECTIONS = [
   ["resumen", "Resumen"], ["agenda", "Agenda"], ["citas", "Citas"], ["servicios", "Servicios"], ["barberos", "Barberos"],
@@ -317,6 +317,7 @@ async function apptDetail(id) {
       <dt>Hora</dt><dd>${fmtTime(a.starts_at)} – ${fmtTime(a.ends_at)}</dd>
       <dt>Contacto</dt><dd>${a.client_phone ? `<a href="tel:${esc(a.client_phone.replace(/[^\d+]/g, ""))}">${esc(a.client_phone)}</a> · <a href="https://wa.me/${esc(waNum(a.client_phone))}" target="_blank" rel="noopener">WhatsApp</a>` : "—"}${a.client_email ? ` · ${esc(a.client_email)}` : ""}${a.client_id ? ` · <a href="#/admin/clientes/${a.client_id}" data-close>ver cliente</a>` : " · sin cuenta"}</dd>
       <dt>Origen</dt><dd>${a.source === "admin" ? "Creada por administración" : "Reserva web"} · ${esc(fmtDateTime(a.created_at))}</dd>
+      ${a.extras?.length ? `<dt>Adicionales</dt><dd>${esc(extrasText(a.extras))} · <strong>${money(extrasTotal(a.extras))}</strong></dd>` : ""}
       ${a.client_notes ? `<dt>Nota del cliente</dt><dd>${esc(a.client_notes)}</dd>` : ""}
       ${a.status === "pendiente" && a.pending_expires_at ? `<dt>Se libera</dt><dd>${esc(fmtDateTime(a.pending_expires_at))} si no se confirma</dd>` : ""}
       ${a.cancel_reason ? `<dt>Cancelación</dt><dd>${esc(a.cancel_reason)}${a.cancelled_at ? ` · ${esc(fmtDateTime(a.cancelled_at))}` : ""}</dd>` : ""}
