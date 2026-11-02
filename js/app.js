@@ -1,8 +1,8 @@
 /* Arranque y enrutador (#/ruta). Las rutas privadas se validan aquí y, sobre todo, en RLS. */
-import { CONFIGURED, sb, State, $, esc, safeUrl, loader, emptyState, friendly, loadPublic, loadProfile, isAdmin, waLink, cookieChoice, setCookieChoice } from "./core.js?v=20261031a";
-import { viewLegal } from "./legal.js?v=20261031a";
-import { viewHome, mountHome, viewBooking, mountBooking, viewBooked } from "./public.js?v=20261031a";
-import { viewAccount, processAuthLink, Recovery } from "./account.js?v=20261031a";
+import { CONFIGURED, sb, State, $, esc, safeUrl, loader, emptyState, friendly, loadPublic, loadProfile, isAdmin, waLink, cookieChoice, setCookieChoice } from "./core.js?v=20261102a";
+import { viewLegal } from "./legal.js?v=20261102a";
+import { viewHome, mountHome, viewBooking, mountBooking, viewBooked } from "./public.js?v=20261102a";
+import { viewAccount, processAuthLink, Recovery } from "./account.js?v=20261102a";
 
 const app = $("#app");
 let seq = 0;
@@ -25,7 +25,7 @@ const I = {
 function header() {
   const n = State.settings.negocio || {}, r = State.settings.reservas || {};
   const ig = igHandle(n.instagram), wa = waLink();
-  const links = [["Servicios", "servicios"], ["Barberos", "barberos"], ["Nosotros", "nosotros"],
+  const links = [["Servicios", "servicios"], ["Snacks", "tienda"], ["Barberos", "barberos"], ["Nosotros", "nosotros"],
     ...(State.gallery.some((g) => g.active) || safeUrl(n.instagram) ? [["Trabajos", "galeria"]] : []), ["Contacto", "visitanos"]];
   // Franja superior: solo datos reales (reglas de reserva, eslogan, dirección y servicios cargados).
   const news = ["Reserva en línea", "Eliges tu barbero y tu hora", r.confirmacion_automatica === false ? "Te confirmamos tu cita" : "Confirmación inmediata",
@@ -99,7 +99,7 @@ async function render() {
     if (route === "admin") {
       if (!State.user) { location.hash = "#/cuenta?volver=admin"; return; }
       if (!isAdmin()) html = `<section class="wrap narrow">${emptyState("No tienes permisos de administrador.", "Esta sección es solo para el equipo de la barbería.", `<a class="btn" href="#/">Ir al inicio</a>`)}</section>`;
-      else { const inPanel = $(".adm"); if (inPanel) inPanel.classList.add("is-busy"); else app.innerHTML = loader("Cargando panel…"); const Admin = await import("./admin.js?v=20261031a"); if (my !== seq) return; ({ html, mount } = await Admin.view(a || "resumen", b, query)); }
+      else { const inPanel = $(".adm"); if (inPanel) inPanel.classList.add("is-busy"); else app.innerHTML = loader("Cargando panel…"); const Admin = await import("./admin.js?v=20261102a"); if (my !== seq) return; ({ html, mount } = await Admin.view(a || "resumen", b, query)); }
     } else if (route === "" || route === "inicio") { html = viewHome(); mount = mountHome; }
     else if (route === "legal") html = viewLegal(a);
     else if (route === "reservar") { html = viewBooking(query); mount = mountBooking; }

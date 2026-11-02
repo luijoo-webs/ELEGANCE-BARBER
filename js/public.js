@@ -1,9 +1,9 @@
 /* Web pública: inicio, flujo de reserva y selector semanal de horarios. */
 import {
-  sb, State, $, $$, esc, safeUrl, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday,
+  sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday,
   fmtDay, fmtTime, fmtDate, hhmm, ymd, friendly, toast, loader, emptyState, busy, scheduleByDay, barberWorkDays, waLink, setMsg,
   mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData
-} from "./core.js?v=20261031a";
+} from "./core.js?v=20261102a";
 
 const N = () => State.settings.negocio || {};
 const R = () => State.settings.reservas || {};
@@ -115,6 +115,17 @@ export function viewHome() {
     </div>
   </section>
 
+  <section class="section" id="tienda" aria-labelledby="t-shop">
+    <div class="wrap">
+      ${head("Para después del corte", "t-shop", "")}
+      <p class="muted rv" style="margin:-8px 0 22px">Snacks y bebidas para disfrutar en la barbería. Se pagan allá, junto con tu servicio.</p>
+      <div class="chips rv" role="group" aria-label="Filtrar productos"><button type="button" class="chip is-on" data-cat-filter="" aria-pressed="true">Todos</button>${Object.keys(SHOP).map((c) => `<button type="button" class="chip" data-cat-filter="${c}" aria-pressed="false">${c}</button>`).join("")}</div>
+      <ul class="catalog">${Object.entries(SHOP).flatMap(([cat, items]) => items.map(([name, price, img]) => [cat, name, price, img])).map(([cat, name, price, img], k) => `<li class="rv" style="--i:${k % 4}" data-cat="${cat}"><div class="cat-card cat-card--shop">
+        <figure class="cat-card__img"><img src="assets/tienda/${img}.jpg" alt="${esc(name)}" loading="lazy"><span class="cat-card__tag">${cat}</span></figure>
+        <div class="cat-card__body"><h4>${esc(name)}</h4><div class="cat-card__foot"><span class="cat-card__price">${money(price)}</span></div></div></div></li>`).join("")}</ul>
+    </div>
+  </section>
+
   <section class="section" id="barberos" aria-labelledby="t-barb">
     <div class="wrap">${head("Nuestros barberos", "t-barb", barbers.length ? `<a class="lp-link" href="#/reservar">Reservar con tu barbero</a>` : "")}</div>
     ${barbers.length ? `<div class="crew" tabindex="0" aria-label="Barberos">${barbers.map((b, k) => {
@@ -206,12 +217,24 @@ export function mountHome() {
   play();
 }
 
+// shortcut: productos fijos en código (lista enviada por el dueño); pasarlos a Supabase si el dueño quiere editarlos desde el panel.
+const SHOP = {
+  Snacks: [["Detodito", 3500, "detodito"], ["Margaritas (pollo, limón, tomate…)", 3000, "margaritas"], ["Natuchip", 3000, "natuchip"], ["Boliquesos", 2500, "boliquesos"],
+    ["Doritos", 3000, "doritos"], ["Cheestris", 2500, "cheestre"], ["Choclitos", 2500, "choclitos"], ["Maní", 2000, "manis"], ["Chokis", 2000, "chockis"]],
+  Cervezas: [["Coronita", 4500, "coronita"], ["Club Colombia", 4500, "club-colombia"], ["Stella Artois botella", 6000, "stella-botella"], ["Stella Artois lata", 5000, "stella-lata"],
+    ["Costeña", 4000, "costena"], ["Miller Lite", 4000, "miller-lite"]],
+  Gaseosas: [["Coca-Cola personal", 3500, "coca-cola"], ["Coca-Cola Zero pequeña", 2000, "coca-zero"], ["Agua saborizada pequeña", 2000, "agua-saborizada"],
+    ["Ginger personal", 3000, "ginger"], ["Sprite personal", 3000, "sprite"], ["Quatro personal", 3000, "quatro-personal"], ["Kola Román pequeña", 2000, "kola-roman"],
+    ["Jugo del Valle", 3500, "jugo-del-valle"], ["Agua personal", 2000, "agua"], ["Quatro pequeña", 2000, "quatro-pequena"], ["Speed Max", 2500, "speed-max"], ["Soda", 3000, "soda"]]
+};
+
 // Filtro del catálogo y elección de ruta (delegados: el inicio se vuelve a pintar en cada navegación).
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-cat-filter]");
   if (b) {
-    $$("[data-cat-filter]").forEach((x) => { x.classList.toggle("is-on", x === b); x.setAttribute("aria-pressed", x === b); });
-    $$(".catalog > li").forEach((li) => { li.hidden = !!b.dataset.catFilter && li.dataset.cat !== b.dataset.catFilter; });
+    const sec = b.closest("section");   // servicios y tienda filtran cada uno su propio catálogo
+    sec.querySelectorAll("[data-cat-filter]").forEach((x) => { x.classList.toggle("is-on", x === b); x.setAttribute("aria-pressed", x === b); });
+    sec.querySelectorAll(".catalog > li").forEach((li) => { li.hidden = !!b.dataset.catFilter && li.dataset.cat !== b.dataset.catFilter; });
   }
   if (e.target.closest("[data-route-open]")) $("#routeDlg")?.showModal();
   const dlg = $("#routeDlg");
