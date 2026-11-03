@@ -1,6 +1,6 @@
 /* Núcleo compartido: conexión, estado, utilidades de fecha (America/Bogota), errores y UI básica. */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js?v=20261102i";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js?v=20261103b";
 
 export const CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 export const sb = CONFIGURED
@@ -93,6 +93,7 @@ export const statusBadge = (s) => `<span class="badge badge--${esc(s)}">${esc(ST
 const ERRORS = {
   NO_AUTENTICADO: "Inicia sesión para continuar.",
   NOMBRE_INVALIDO: "Escribe tu nombre completo.",
+  PAGO_INVALIDO: "Elige un método de pago válido.",
   CELULAR_INVALIDO: "Escribe un celular válido para contactarte.",
   CORREO_INVALIDO: "Escribe un correo válido: ahí te llega la confirmación y el recordatorio.",
   NO_AUTORIZADO: "No tienes permisos para esta acción.",

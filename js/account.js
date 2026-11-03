@@ -2,8 +2,8 @@
 import {
   sb, State, SITE_URL, $, esc, friendly, toast, loader, emptyState, busy, setMsg, formData, confirmDialog, modal,
   fmtDate, fmtTime, durLabel, priceLabel, statusBadge, ymd, loadProfile, waLink, consentChecks, consentMissing, logConsent, isAdmin
-} from "./core.js?v=20261102i";
-import { mountSlotPicker } from "./public.js?v=20261102i";
+} from "./core.js?v=20261103b";
+import { mountSlotPicker } from "./public.js?v=20261103b";
 
 const back = (q) => (q.volver === "reservar" ? "#/reservar" : q.volver === "admin" || isAdmin() ? "#/admin" : "#/cuenta");   // el admin entra directo al panel
 const R = () => State.settings.reservas || {};

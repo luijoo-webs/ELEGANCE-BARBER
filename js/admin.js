@@ -3,8 +3,8 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday, ymd, toIso, hhmm,
   fmtTime, fmtDate, fmtDay, fmtDateTime, minutes, fromMinutes, shortTime, STATUS, statusBadge, friendly, toast, loader, emptyState,
   formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin, extrasText, extrasTotal
-} from "./core.js?v=20261102i";
-import { SHOP_ITEMS } from "./public.js?v=20261102i";
+} from "./core.js?v=20261103b";
+import { SHOP, svcPhoto } from "./public.js?v=20261103b";
 
 const SECTIONS = [
   ["resumen", "Resumen"], ["agenda", "Agenda"], ["ventas", "Ventas"], ["citas", "Citas"], ["servicios", "Servicios"], ["barberos", "Barberos"],
@@ -19,6 +19,47 @@ const hrefWith = (base, query, patch) => `${base}?${new URLSearchParams(Object.e
 const barberName = (id) => State.barbers.find((b) => b.id === id)?.name || "—";
 let channel = null;
 const waNum = (t) => { const d = String(t).replace(/\D/g, ""); return d.length === 10 ? "57" + d : d; };   // celular colombiano sin indicativo
+
+const initials = (t) => String(t || "?").trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+const avatar = (name, url) => `<span class="av">${safeUrl(url) ? `<img src="${esc(url)}" alt="">` : esc(initials(name))}</span>`;
+const apptPhoto = (a) => svcPhoto(State.services.find((s) => s.id === (a.services?.[0]?.id || a.service_id)) || { name: a.services?.[0]?.n || a.service_name });
+const apptTotal = (a) => Number(a.price || 0) + extrasTotal(a.extras);
+const waLinkTo = (phone) => `https://wa.me/${esc(waNum(phone))}`;
+const WA_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 1-13.3 7.9L3 21l1.2-4.5A9 9 0 1 1 21 12z"/></svg>';
+
+/* Tarjeta de cita (Citas y ficha de cliente): foto del servicio y acciones rápidas. */
+function apptCard(a, { client = true } = {}) {
+  const started = new Date(a.starts_at) <= new Date(), more = (a.services?.length || 1) - 1;
+  return `<article class="acard acard--${a.status}" data-appt="${a.id}" tabindex="0">
+    <div class="acard__pic"><img src="${esc(apptPhoto(a))}" alt="" loading="lazy">${more ? `<span>+${more}</span>` : ""}</div>
+    <div class="acard__body">
+      <div class="acard__top"><strong class="acard__time">${fmtTime(a.starts_at)}</strong>${statusBadge(a.status)}</div>
+      ${client ? "" : `<p class="muted" style="margin:0;font-size:.8rem">${esc(fmtDate(a.starts_at))}</p>`}
+      <h3>${esc(a.service_name)}</h3>
+      ${client ? `<p class="acard__who">${avatar(a.client_name)}<span>${esc(a.client_name || "Cliente")}${a.client_id ? "" : " <small>invitado</small>"}</span></p>` : ""}
+      <p class="acard__meta"><span>${esc(a.barber_name)}</span>${a.price != null || a.extras?.length ? `<b>${money(apptTotal(a))}</b>` : ""}${a.payment_method ? `<span>${esc(a.payment_method)}</span>` : ""}${a.extras?.length ? `<span>+ ${esc(extrasText(a.extras))}</span>` : ""}</p>
+      <div class="acard__acts">
+        ${a.status === "pendiente" ? `<button class="btn btn--sm" data-qst="confirmada">Confirmar</button>` : ""}
+        ${a.status === "confirmada" && started ? `<button class="btn btn--sm" data-qst="completada">Completar</button>` : ""}
+        ${a.client_phone ? `<a class="acard__wa" href="${waLinkTo(a.client_phone)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(a.client_name)}">${WA_ICON}</a>` : ""}
+      </div>
+    </div></article>`;
+}
+function bindAppts(root) {
+  const open = (e) => {
+    if (e.target.closest("a")) return;
+    const r = e.target.closest("[data-appt]"); if (!r) return;
+    if (e.type === "keydown" && (e.key !== "Enter" || e.target !== r)) return;
+    const qs = e.target.closest("[data-qst]");
+    if (!qs) return apptDetail(r.dataset.appt);
+    busy(qs, async () => {
+      const { error } = await sb.rpc("admin_set_status", { p_id: r.dataset.appt, p_status: qs.dataset.qst, p_reason: null });
+      if (error) return toast(friendly(error), "err");
+      toast(`Cita ${STATUS[qs.dataset.qst].toLowerCase()}.`); refresh();
+    });
+  };
+  root.addEventListener("click", open); root.addEventListener("keydown", open);
+}
 
 const ICON = {
   resumen: '<path d="M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z"/>',
@@ -126,7 +167,7 @@ async function vResumen(_, query) {
 }
 
 /* =============================== AGENDA =============================== */
-const SLOT = 15, PX = 1.2;   // 15 min por fila, 1.2 px por minuto
+const SLOT = 15, PX = 1.6;   // 15 min por fila, 1.6 px por minuto
 // Franjas abiertas (minutos) de un día: horario general ∩ horario propio del barbero (si tiene).
 function windows(dateStr, barberId) {
   const dow = weekday(dateStr);
@@ -155,12 +196,17 @@ async function vAgenda(_, query) {
   if (barberF) qa = qa.eq("barber_id", barberF);
   if (statusF === "activas") qa = qa.neq("status", "cancelada"); else if (statusF !== "todas") qa = qa.eq("status", statusF);
   let qt = sb.from("time_off").select("*").lt("starts_at", re).gt("ends_at", rs);
-  const [appts, offs] = await Promise.all([q(qa), q(qt)]);
+  const wk = mondayOf(date);
+  const [appts, offs, weekAppts] = await Promise.all([q(qa), q(qt),
+    q(sb.from("appointments").select("starts_at").neq("status", "cancelada").gte("starts_at", toIso(wk, "00:00")).lt("starts_at", toIso(addDays(wk, 7), "00:00")))]);
+  const dayCount = (d) => weekAppts.filter((a) => ymd(new Date(a.starts_at)) === d).length;
+  const live = appts.filter((a) => a.status !== "cancelada");
+  const nextA = live.find((a) => new Date(a.starts_at) > new Date());
   const offsF = offs.filter((t) => !barberF || !t.barber_id || t.barber_id === barberF);
 
   // Columnas: modo día → un barbero por columna; modo semana → un día por columna.
   const cols = mode === "dia"
-    ? barbers.map((b) => ({ key: b.id, date, barberId: b.id, label: esc(b.name), sub: "" }))
+    ? barbers.map((b) => ({ key: b.id, date, barberId: b.id, label: `<span class="agenda__who">${avatar(b.name, b.photo_url)}${esc(b.name)}</span>`, sub: "" }))
     : Array.from({ length: 7 }, (_, i) => { const d = addDays(from, i); return { key: d, date: d, barberId: barberF || null, label: DAYS_SHORT[weekday(d)] + " " + +d.slice(8), sub: fmtDay(d, { month: "short" }), today: d === today }; });
   // Rango horario visible: el de apertura de los días mostrados (8–20 si no hay horario).
   let lo = 24 * 60, hi = 0;
@@ -181,7 +227,7 @@ async function vAgenda(_, query) {
       const idx = Math.max(0, barbers.findIndex((b) => b.id === a.barber_id));
       const split = mode === "semana" && !barberF && nb > 1 ? `left:calc(${(idx / nb) * 100}% + 2px);right:auto;width:calc(${100 / nb}% - 4px);` : "";
       return `<button type="button" class="ev ev--${a.status}" style="top:${top}px;height:${h}px;${split}" data-appt="${a.id}" title="${esc(`${fmtTime(a.starts_at)} ${a.client_name} · ${a.service_name} · ${a.barber_name}`)}">
-        <strong>${fmtTime(a.starts_at)} ${esc(a.client_name)}</strong>${esc(a.service_name)}${mode === "semana" && !barberF ? ` · ${esc(a.barber_name)}` : ""}</button>`;
+        ${mode === "dia" ? `<img src="${esc(apptPhoto(a))}" alt="" loading="lazy">` : ""}<span><strong>${fmtTime(a.starts_at)} ${esc(a.client_name)}</strong>${esc(a.service_name)}${mode === "semana" && !barberF ? ` · ${esc(a.barber_name)}` : ""}</span></button>`;
     }).join("");
     const blocks = offsF.filter((t) => !t.barber_id || mode === "semana" || t.barber_id === c.barberId).map((t) => {
       const ds = new Date(toIso(c.date, "00:00")).getTime(), de = ds + 864e5;
@@ -191,11 +237,21 @@ async function vAgenda(_, query) {
       if (em <= sm) return "";
       return `<button type="button" class="ev ev--block" style="top:${(sm - lo) * PX}px;height:${(em - sm) * PX}px" data-off="${t.id}" title="${esc(t.reason || t.kind)}"><strong>${esc(KIND[t.kind] || t.kind)}${t.barber_id ? "" : " · negocio"}</strong>${esc(t.reason || "")}${mode === "semana" && t.barber_id && !barberF ? ` · ${esc(barberName(t.barber_id))}` : ""}</button>`;
     }).join("");
-    return `<div class="agenda__col">${slots}${evs}${blocks}</div>`;
+    const nowM = minutes(hhmm(new Date()));
+    const nowLine = c.date === today && nowM >= lo && nowM <= hi ? `<div class="agenda__now" style="top:${(nowM - lo) * PX}px"></div>` : "";
+    return `<div class="agenda__col">${slots}${evs}${blocks}${nowLine}</div>`;
   };
 
   const nav = (n) => hrefWith("#/admin/agenda", query, { fecha: addDays(date, n * days) });
   const body = !barbers.length ? emptyState("No hay barberos activos.", "Crea un barbero para usar la agenda.", `<a class="btn" href="#/admin/barberos">Ir a barberos</a>`) : `
+    <nav class="wkstrip" aria-label="Días de la semana">${Array.from({ length: 7 }, (_, i) => { const d = addDays(wk, i), n = dayCount(d);
+      return `<a href="${hrefWith("#/admin/agenda", query, { fecha: d, vista: "dia" })}" class="${d === date && mode === "dia" ? "is-on" : ""}${d === today ? " is-today" : ""}"><small>${DAYS_SHORT[weekday(d)]}</small><b>${+d.slice(8)}</b><span>${n ? `${n} cita${n > 1 ? "s" : ""}` : "Libre"}</span></a>`; }).join("")}</nav>
+    <div class="agstats">
+      <div><b>${live.length}</b><span>citas ${mode === "dia" ? "este día" : "esta semana"}</span></div>
+      <div><b>${live.filter((a) => a.status === "pendiente").length}</b><span>por confirmar</span></div>
+      <div><b>${money(live.reduce((t, a) => t + apptTotal(a), 0))}</b><span>valor de las citas</span></div>
+      <div class="agstats__next">${nextA ? `<img src="${esc(apptPhoto(nextA))}" alt=""><span><b>${fmtTime(nextA.starts_at)} · ${esc(nextA.client_name)}</b><span>Próxima cita · ${esc(nextA.barber_name)}</span></span>` : `<span><b>Sin citas pendientes</b><span>en este rango</span></span>`}</div>
+    </div>
     <div class="toolbar">
       <a class="icon-btn" href="${nav(-1)}" aria-label="Anterior" style="display:grid;place-items:center;text-decoration:none">‹</a>
       <a class="btn btn--sm btn--ghost" href="${hrefWith("#/admin/agenda", query, { fecha: today })}">Hoy</a>
@@ -240,7 +296,7 @@ async function vAgenda(_, query) {
 const KIND = { cierre: "Cierre", festivo: "Festivo", vacaciones: "Vacaciones", bloqueo: "Bloqueo" };
 
 /* Crear o reprogramar una cita (valida en el servidor: horario, bloqueos y solapamientos). */
-function apptEditor({ appt = null, date = todayYmd(), time = "", barberId = "", clientId = null, clientName = "" } = {}) {
+function apptEditor({ appt = null, date = todayYmd(), time = "", barberId = "", clientId = null, clientName = "", walkName = "", walkPhone = "" } = {}) {
   const services = State.services.filter((s) => !s.deleted_at && (s.active || s.id === appt?.service_id));
   const barbers = State.barbers.filter((b) => b.active && !b.deleted_at);
   let client = appt ? { id: appt.client_id, name: appt.client_name } : clientId ? { id: clientId, name: clientName } : null;
@@ -250,8 +306,8 @@ function apptEditor({ appt = null, date = todayYmd(), time = "", barberId = "", 
       ${appt ? `<p class="muted">Cliente: <strong>${esc(appt.client_name)}</strong></p>` : `
       <div class="field"><span>Cliente registrado</span><input id="cliSearch" placeholder="Buscar por nombre, correo o celular" autocomplete="off" value="${esc(client?.name || "")}">
         <div id="cliResults" class="pick-list"></div></div>
-      <div class="grid-2" id="walkin" ${client ? "hidden" : ""}><label class="field"><span>…o nombre (sin cuenta)</span><input name="client_name" maxlength="120"></label>
-        <label class="field"><span>Celular</span><input name="client_phone" type="tel" maxlength="30"></label></div>`}
+      <div class="grid-2" id="walkin" ${client ? "hidden" : ""}><label class="field"><span>…o nombre (sin cuenta)</span><input name="client_name" maxlength="120" value="${esc(walkName)}"></label>
+        <label class="field"><span>Celular</span><input name="client_phone" type="tel" maxlength="30" value="${esc(walkPhone)}"></label></div>`}
       <div class="grid-2">
         <label class="field"><span>Servicio</span><select name="service" required>${services.map((s) => `<option value="${s.id}" ${s.id === appt?.service_id ? "selected" : ""}>${esc(s.name)} · ${durLabel(s.duration_min)}</option>`).join("")}</select></label>
         <label class="field"><span>Barbero</span><select name="barber" required>${barbers.map((b) => `<option value="${b.id}" ${b.id === (appt?.barber_id || barberId) ? "selected" : ""}>${esc(b.name)}</option>`).join("")}</select></label>
@@ -320,6 +376,7 @@ async function apptDetail(id) {
     <dl class="kv">
       <dt>Servicio</dt><dd>${esc(a.service_name)} · ${durLabel(a.duration_min)}</dd>
       <dt>Precio</dt><dd>${priceLabel(a.price)}</dd>
+      ${a.payment_method ? `<dt>Método de pago</dt><dd>${esc(a.payment_method)}</dd>` : ""}
       <dt>Barbero</dt><dd>${esc(a.barber_name)}</dd>
       <dt>Fecha</dt><dd>${esc(fmtDate(a.starts_at, { year: "numeric" }))}</dd>
       <dt>Hora</dt><dd>${fmtTime(a.starts_at)} – ${fmtTime(a.ends_at)}</dd>
@@ -420,39 +477,53 @@ function bindOffs(root, list) {
 
 /* =============================== CITAS =============================== */
 async function vCitas(_, query) {
-  const page = Math.max(0, Number(query.pag || 0)), size = 50;
+  const page = Math.max(0, Number(query.pag || 0)), size = 50, nowIso = new Date().toISOString();
+  const tab = query.estado || "proximas";
+  const upcoming = (p) => p.in("status", ["pendiente", "confirmada"]).gte("starts_at", nowIso);
   let qa = sb.from("appointments").select("*", { count: "exact" });
-  if (query.estado) qa = qa.eq("status", query.estado);
+  if (tab === "proximas") qa = upcoming(qa);
+  else if (tab !== "todas") qa = qa.eq("status", tab);
   if (query.barbero) qa = qa.eq("barber_id", query.barbero);
   if (query.desde) qa = qa.gte("starts_at", toIso(query.desde, "00:00"));
   if (query.hasta) qa = qa.lt("starts_at", toIso(addDays(query.hasta, 1), "00:00"));
   if (query.q && like(query.q)) { const t = like(query.q); qa = qa.or(`client_name.ilike.%${t}%,client_phone.ilike.%${t}%,client_email.ilike.%${t}%,service_name.ilike.%${t}%`); }
-  qa = qa.order("starts_at", { ascending: query.orden === "asc" }).range(page * size, page * size + size - 1);
-  const { data, count, error } = await qa;
+  qa = qa.order("starts_at", { ascending: query.orden ? query.orden === "asc" : tab === "proximas" || tab === "pendiente" }).range(page * size, page * size + size - 1);
+  const head = (st) => sb.from("appointments").select("id", { count: "exact", head: true }).eq("status", st);
+  const [{ data, count, error }, cUp, cPend, cDone, cCan] = await Promise.all([qa,
+    upcoming(sb.from("appointments").select("id", { count: "exact", head: true })), head("pendiente"), head("completada"), head("cancelada")]);
   if (error) throw error;
+  const tabs = [["proximas", "Próximas", cUp.count], ["pendiente", "Por confirmar", cPend.count], ["completada", "Completadas", cDone.count], ["cancelada", "Canceladas", cCan.count], ["todas", "Todas", null]];
+  const filtered = query.q || query.barbero || query.desde || query.hasta;
+  const next = tab === "proximas" && !filtered && !page ? data[0] : null;
+  const rest = next ? data.slice(1) : data;
+  const days = [...new Set(rest.map((a) => ymd(new Date(a.starts_at))))];
+  const mins = next ? Math.round((new Date(next.starts_at) - new Date()) / 60000) : 0;
   const html = shell("citas", "Citas", `<button class="btn btn--sm" id="newAppt" type="button">Nueva cita</button>`, `
+    <nav class="ctabs" aria-label="Estado">${tabs.map(([k, v, n]) => `<a href="${hrefWith("#/admin/citas", {}, { estado: k === "proximas" ? "" : k })}" class="${k === tab ? "is-on" : ""}">${v}${n != null ? `<b>${n}</b>` : ""}</a>`).join("")}</nav>
+    ${next ? `<section class="nextup" data-appt="${next.id}" tabindex="0" style="--pic:url('${esc(new URL(apptPhoto(next), document.baseURI).href)}')">
+      <p class="nextup__k">Siguiente cita · ${mins < 60 ? `en ${Math.max(mins, 0)} min` : mins < 1440 ? `en ${Math.round(mins / 60)} h` : esc(fmtDate(next.starts_at))}</p>
+      <h2>${fmtTime(next.starts_at)} · ${esc(next.client_name || "Cliente")}</h2>
+      <p>${esc(next.service_name)} con ${esc(next.barber_name)}${next.price != null ? ` · <b>${money(apptTotal(next))}</b>` : ""}</p>
+      <div class="acard__acts">${next.status === "pendiente" ? `<button class="btn btn--sm btn--light" data-qst="confirmada">Confirmar</button>` : ""}${next.client_phone ? `<a class="btn btn--sm btn--light" href="${waLinkTo(next.client_phone)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}</div>
+    </section>` : ""}
     <form class="toolbar" id="fForm">
+      <input type="hidden" name="estado" value="${esc(query.estado || "")}">
       <input class="grow" type="search" name="q" value="${esc(query.q || "")}" placeholder="Buscar cliente, celular, correo o servicio">
-      <select name="estado" aria-label="Estado"><option value="">Todos los estados</option>${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${k === query.estado ? "selected" : ""}>${v}</option>`).join("")}</select>
       <select name="barbero" aria-label="Barbero"><option value="">Todos los barberos</option>${State.barbers.filter((b) => !b.deleted_at).map((b) => `<option value="${b.id}" ${b.id === query.barbero ? "selected" : ""}>${esc(b.name)}</option>`).join("")}</select>
       <input type="date" name="desde" value="${esc(query.desde || "")}" aria-label="Desde"><input type="date" name="hasta" value="${esc(query.hasta || "")}" aria-label="Hasta">
-      <select name="orden" aria-label="Orden"><option value="desc">Más recientes</option><option value="asc" ${query.orden === "asc" ? "selected" : ""}>Más antiguas</option></select>
-      <button class="btn btn--sm" type="submit">Filtrar</button><a class="btn btn--sm btn--ghost" href="#/admin/citas">Limpiar</a>
+      <button class="btn btn--sm" type="submit">Filtrar</button>${filtered ? `<a class="btn btn--sm btn--ghost" href="${hrefWith("#/admin/citas", {}, { estado: query.estado })}">Limpiar</a>` : ""}
     </form>
-    ${data.length ? `<div class="table-wrap"><table><thead><tr><th>Fecha y hora</th><th>Cliente</th><th>Servicio</th><th>Barbero</th><th>Estado</th><th>Origen</th></tr></thead><tbody>
-      ${data.map((a) => `<tr class="click" data-appt="${a.id}" tabindex="0"><td>${esc(fmtDate(a.starts_at, { weekday: "short", year: "numeric" }))}<br><span class="muted">${fmtTime(a.starts_at)} – ${fmtTime(a.ends_at)}</span></td>
-        <td>${esc(a.client_name)}<br><span class="muted">${esc(a.client_phone || a.client_email || "")}</span></td><td>${esc(a.service_name)}<br><span class="muted">${durLabel(a.duration_min)} · ${priceLabel(a.price)}</span></td>
-        <td>${esc(a.barber_name)}</td><td>${statusBadge(a.status)}</td><td class="muted">${a.source === "admin" ? "Admin" : "Web"}</td></tr>`).join("")}
-    </tbody></table></div>
-    <div class="pager"><span>${page * size + 1}–${page * size + data.length} de ${count}</span><span class="row">
+    ${days.map((d) => { const list = rest.filter((a) => ymd(new Date(a.starts_at)) === d);
+      return `<section class="cday"><header><b>${+d.slice(8)}</b><span>${esc(cap(fmtDay(d, { weekday: "long" })))}<small>${esc(fmtDay(d, { month: "long", year: "numeric" }))} · ${list.length} cita${list.length > 1 ? "s" : ""}</small></span>${d === todayYmd() ? `<em>Hoy</em>` : ""}</header>
+        <div class="agrid">${list.map((a) => apptCard(a)).join("")}</div></section>`; }).join("")}
+    ${data.length ? `<div class="pager"><span>${page * size + 1}–${page * size + data.length} de ${count}</span><span class="row">
       ${page > 0 ? `<a class="btn btn--sm btn--ghost" href="${hrefWith("#/admin/citas", query, { pag: page - 1 })}">Anterior</a>` : ""}
       ${(page + 1) * size < count ? `<a class="btn btn--sm btn--ghost" href="${hrefWith("#/admin/citas", query, { pag: page + 1 })}">Siguiente</a>` : ""}</span></div>`
-    : emptyState("No hay citas con esos filtros.")}`);
+    : emptyState(tab === "proximas" && !filtered ? "No hay citas próximas." : "No hay citas con esos filtros.")}`);
   const mount = () => {
     $("#newAppt").addEventListener("click", () => apptEditor({}));
     $("#fForm").addEventListener("submit", (e) => { e.preventDefault(); go(hrefWith("#/admin/citas", {}, formData(e.target))); });
-    const open = (e) => { const r = e.target.closest("[data-appt]"); if (r && (e.type === "click" || e.key === "Enter")) apptDetail(r.dataset.appt); };
-    $(".table-wrap")?.addEventListener("click", open); $(".table-wrap")?.addEventListener("keydown", open);
+    bindAppts($(".adm__main"));
   };
   return { html, mount };
 }
@@ -465,13 +536,11 @@ async function vServicios(_, query) {
   if (query.f === "sinprecio") list = list.filter((s) => s.price == null);
   const html = shell("servicios", "Servicios", `<button class="btn btn--sm btn--ghost" id="newCat" type="button">Nueva categoría</button><button class="btn btn--sm" id="newSvc" type="button">Nuevo servicio</button>`, `
     <div class="toolbar"><div class="seg"><a href="#/admin/servicios" class="${query.f ? "" : "is-on"}">Todos</a><a href="#/admin/servicios?f=sinprecio" class="${query.f ? "is-on" : ""}">Sin precio</a></div></div>
-    ${list.length ? `<div class="table-wrap"><table><thead><tr><th></th><th>Servicio</th><th>Categoría</th><th>Duración</th><th>Precio</th><th>Orden</th><th>Estado</th><th></th></tr></thead><tbody>
-      ${list.map((s) => `<tr class="${s.active ? "" : "off"}"><td>${safeUrl(s.image_url) ? `<img class="thumb" src="${esc(s.image_url)}" alt="">` : `<span class="thumb" style="display:block"></span>`}</td>
-        <td><strong>${esc(s.name)}</strong>${s.description ? `<br><span class="muted">${esc(s.description.slice(0, 90))}</span>` : ""}</td><td>${esc(catName(s.category_id))}</td>
-        <td>${durLabel(s.duration_min)}</td><td>${s.price == null ? `<span class="is-pending">Por definir</span>` : money(s.price)}</td><td>${s.sort_order}</td>
-        <td>${s.active ? "Publicado" : "Oculto"}</td>
-        <td class="row" style="flex-wrap:nowrap"><button class="btn btn--sm btn--ghost" data-edit="${s.id}">Editar</button><button class="btn btn--sm btn--ghost" data-toggle="${s.id}">${s.active ? "Ocultar" : "Publicar"}</button><button class="btn btn--sm btn--ghost btn--danger-text" data-del="${s.id}">Eliminar</button></td></tr>`).join("")}
-    </tbody></table></div>` : emptyState(query.f ? "Todos los servicios tienen precio." : "Aún no hay servicios.", query.f ? "" : "Crea el primero con “Nuevo servicio”.")}
+    ${list.length ? `<div class="sgrid">${list.map((s) => `<article class="scard${s.active ? "" : " is-off"}">
+        <div class="scard__pic"><img src="${esc(svcPhoto(s))}" alt="" loading="lazy"><span class="scard__price${s.price == null ? " is-none" : ""}">${s.price == null ? "Sin precio" : money(s.price)}</span>${s.active ? "" : `<span class="scard__off">Oculto</span>`}</div>
+        <div class="scard__body"><small>${esc(catName(s.category_id))} · ${durLabel(s.duration_min)}</small><h3>${esc(s.name)}</h3>${s.description ? `<p class="muted">${esc(s.description.slice(0, 90))}</p>` : ""}
+          <div class="scard__acts"><button class="btn btn--sm" data-edit="${s.id}">Editar</button><button class="btn btn--sm btn--ghost" data-toggle="${s.id}">${s.active ? "Ocultar" : "Publicar"}</button><button class="btn btn--sm btn--ghost btn--danger-text" data-del="${s.id}">Eliminar</button></div></div></article>`).join("")}</div>`
+      : emptyState(query.f ? "Todos los servicios tienen precio." : "Aún no hay servicios.", query.f ? "" : "Crea el primero con “Nuevo servicio”.")}
     <div class="card" style="margin-top:18px"><h2>Categorías</h2>
       ${cats.length ? `<div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Orden</th><th>Estado</th><th></th></tr></thead><tbody>${cats.map((c) => `<tr class="${c.active ? "" : "off"}"><td>${esc(c.name)}</td><td>${c.sort_order}</td><td>${c.active ? "Visible" : "Oculta"}</td>
         <td class="row" style="flex-wrap:nowrap"><button class="btn btn--sm btn--ghost" data-ecat="${c.id}">Editar</button><button class="btn btn--sm btn--ghost btn--danger-text" data-dcat="${c.id}">Eliminar</button></td></tr>`).join("")}</tbody></table></div>`
@@ -698,33 +767,61 @@ async function vHorarios() {
 /* =============================== CLIENTES =============================== */
 async function vClientes(id, query) {
   if (id) return vCliente(id);
-  const page = Math.max(0, Number(query.pag || 0)), size = 50;
-  let qp = sb.from("profiles").select("*", { count: "exact" }).order("created_at", { ascending: false }).range(page * size, page * size + size - 1);
-  if (query.rol) qp = qp.eq("role", query.rol);
-  if (query.q && like(query.q)) { const t = like(query.q); qp = qp.or(`full_name.ilike.%${t}%,email.ilike.%${t}%,phone.ilike.%${t}%`); }
-  const { data, count, error } = await qp;
-  if (error) throw error;
-  const counts = {};
-  if (data.length) (await q(sb.from("appointments").select("client_id,status").in("client_id", data.map((p) => p.id)))).forEach((a) => {
-    const c = (counts[a.client_id] ||= { total: 0, done: 0 }); c.total++; if (a.status === "completada") c.done++;
-  });
+  const seg = query.seg || "todos", now = Date.now(), DAY = 864e5, size = 48, page = Math.max(0, Number(query.pag || 0));
+  // shortcut: trae hasta 1000 cuentas y 5000 citas y filtra en el navegador; pasar a una función SQL si el negocio supera eso.
+  const [profiles, appts] = await Promise.all([
+    q(sb.from("profiles").select("*").order("created_at", { ascending: false }).limit(1000)),
+    q(sb.from("appointments").select("id,client_id,client_name,client_phone,client_email,status,starts_at,price,extras,service_name,barber_name").order("starts_at", { ascending: false }).limit(5000))
+  ]);
+  const summarize = (list) => {
+    const done = list.filter((a) => a.status === "completada"), active = list.filter((a) => ["pendiente", "confirmada"].includes(a.status) && new Date(a.starts_at) > now);
+    return { total: list.length, done: done.length, spent: done.reduce((t, a) => t + apptTotal(a), 0), last: done[0]?.starts_at || null, next: active.at(-1)?.starts_at || null };
+  };
+  const clients = profiles.map((p) => ({ id: p.id, name: p.full_name || p.email || "(sin nombre)", email: p.email, phone: p.phone, role: p.role, created: p.created_at, ...summarize(appts.filter((a) => a.client_id === p.id)) }));
+  const groups = {};
+  appts.filter((a) => !a.client_id).forEach((a) => { const k = (a.client_email || "").toLowerCase() || String(a.client_phone || "").replace(/\D/g, "") || a.client_name; (groups[k] ||= []).push(a); });
+  const guests = Object.entries(groups).map(([k, l]) => ({ guest: k, name: l[0].client_name || "Invitado", email: l[0].client_email, phone: l[0].client_phone, ...summarize(l) }));
+  const inactive = (c) => c.last && !c.next && now - new Date(c.last) > 45 * DAY;
+  const SEGS = [["todos", "Todos", () => true], ["proxima", "Con cita próxima", (c) => c.next], ["frecuentes", "Frecuentes", (c) => c.done >= 3], ["inactivos", "Sin volver 45+ días", inactive], ["nuevos", "Nuevos", (c) => now - new Date(c.created) < 30 * DAY]];
+  const isGuests = seg === "invitados";
+  const t = (query.q || "").trim().toLowerCase();
+  const match = (c) => !t || [c.name, c.email, c.phone].some((v) => String(v || "").toLowerCase().includes(t));
+  const pool = isGuests ? guests : clients.filter((SEGS.find(([k]) => k === seg) || SEGS[0])[2]);
+  const shown = pool.filter(match).sort((a, b) => b.total - a.total);
   const ROLES = { client: "Cliente", admin: "Administrador", barber: "Barbero" };
+  const card = (c) => `<article class="ucard" ${c.id ? `data-cli="${c.id}"` : `data-guest="${esc(c.guest)}"`} tabindex="0">
+    <header>${avatar(c.name)}<div><h3>${esc(c.name)}</h3><small>${esc(c.phone || c.email || "Sin contacto")}</small></div>${c.role && c.role !== "client" ? `<em>${ROLES[c.role]}</em>` : ""}${c.id ? "" : `<em>Invitado</em>`}</header>
+    <dl><div><dt>Reservas</dt><dd>${c.total}</dd></div><div><dt>Atendidas</dt><dd>${c.done}</dd></div><div><dt>Ha pagado</dt><dd>${money(c.spent)}</dd></div></dl>
+    <p class="ucard__next ${c.next ? "is-next" : ""}">${c.next ? `Próxima cita: ${esc(fmtDate(c.next, { weekday: "short" }))} · ${fmtTime(c.next)}` : c.last ? `Última visita: ${esc(fmtDate(c.last, { weekday: undefined, year: "numeric" }))}` : "Aún sin visitas"}</p>
+    <div class="ucard__acts"><button class="btn btn--sm" type="button" data-new-for>Nueva cita</button>${c.phone ? `<a class="btn btn--sm btn--ghost" href="${waLinkTo(c.phone)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}</div></article>`;
   const html = shell("clientes", "Clientes", `<a class="btn btn--sm btn--ghost" href="#/admin/consentimientos">Aceptaciones legales</a>`, `
-    <form class="toolbar" id="fForm"><input class="grow" type="search" name="q" value="${esc(query.q || "")}" placeholder="Buscar por nombre, correo o celular">
-      <select name="rol" aria-label="Rol"><option value="">Todos los roles</option>${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${k === query.rol ? "selected" : ""}>${v}</option>`).join("")}</select>
-      <button class="btn btn--sm" type="submit">Buscar</button></form>
-    ${data.length ? `<div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Celular</th><th>Registro</th><th>Citas</th><th>Rol</th></tr></thead><tbody>
-      ${data.map((p) => `<tr class="click" data-cli="${p.id}" tabindex="0"><td><strong>${esc(p.full_name || "(sin nombre)")}</strong></td><td>${esc(p.email || "")}</td><td>${esc(p.phone || "—")}</td>
-        <td>${esc(new Date(p.created_at).toLocaleDateString("es-CO", { timeZone: "America/Bogota" }))}</td><td>${counts[p.id]?.total || 0} <span class="muted">(${counts[p.id]?.done || 0} completadas)</span></td><td>${ROLES[p.role]}</td></tr>`).join("")}
-    </tbody></table></div>
-    <div class="pager"><span>${page * size + 1}–${page * size + data.length} de ${count}</span><span class="row">
+    <div class="kpis">
+      <div class="kpi"><span>Clientes con cuenta</span><strong>${clients.filter((c) => c.role === "client").length}</strong><small>+${clients.filter((c) => now - new Date(c.created) < 30 * DAY).length} en 30 días</small></div>
+      <div class="kpi"><span>Invitados</span><strong>${guests.length}</strong><small>reservaron sin cuenta</small></div>
+      <div class="kpi"><span>Con cita próxima</span><strong>${clients.concat(guests).filter((c) => c.next).length}</strong><small>por atender</small></div>
+      <div class="kpi"><span>Sin volver</span><strong>${clients.concat(guests).filter(inactive).length}</strong><small>más de 45 días</small></div>
+    </div>
+    <nav class="ctabs" aria-label="Segmentos">${SEGS.map(([k, v]) => [k, v]).concat([["invitados", "Invitados"]]).map(([k, v]) => `<a href="${hrefWith("#/admin/clientes", {}, { seg: k === "todos" ? "" : k, q: query.q })}" class="${k === seg ? "is-on" : ""}">${v}</a>`).join("")}</nav>
+    <form class="toolbar" id="fForm"><input type="hidden" name="seg" value="${esc(query.seg || "")}"><input class="grow" type="search" name="q" value="${esc(query.q || "")}" placeholder="Buscar por nombre, correo o celular"><button class="btn btn--sm" type="submit">Buscar</button></form>
+    ${shown.length ? `<div class="ugrid">${shown.slice(page * size, page * size + size).map(card).join("")}</div>
+    <div class="pager"><span>${page * size + 1}–${Math.min(shown.length, (page + 1) * size)} de ${shown.length}</span><span class="row">
       ${page > 0 ? `<a class="btn btn--sm btn--ghost" href="${hrefWith("#/admin/clientes", query, { pag: page - 1 })}">Anterior</a>` : ""}
-      ${(page + 1) * size < count ? `<a class="btn btn--sm btn--ghost" href="${hrefWith("#/admin/clientes", query, { pag: page + 1 })}">Siguiente</a>` : ""}</span></div>`
-    : emptyState("No hay clientes con esa búsqueda.")}`);
+      ${(page + 1) * size < shown.length ? `<a class="btn btn--sm btn--ghost" href="${hrefWith("#/admin/clientes", query, { pag: page + 1 })}">Siguiente</a>` : ""}</span></div>`
+    : emptyState("No hay clientes aquí.")}`);
   const mount = () => {
     $("#fForm").addEventListener("submit", (e) => { e.preventDefault(); go(hrefWith("#/admin/clientes", {}, formData(e.target))); });
-    const open = (e) => { const r = e.target.closest("[data-cli]"); if (r && (e.type === "click" || e.key === "Enter")) location.hash = `#/admin/clientes/${r.dataset.cli}`; };
-    $(".table-wrap")?.addEventListener("click", open); $(".table-wrap")?.addEventListener("keydown", open);
+    const act = (e) => {
+      if (e.target.closest("a")) return;
+      const r = e.target.closest("[data-cli],[data-guest]"); if (!r || (e.type === "keydown" && (e.key !== "Enter" || e.target !== r))) return;
+      const g = r.dataset.guest != null ? guests.find((x) => x.guest === r.dataset.guest) : null;
+      const c = g || clients.find((x) => x.id === r.dataset.cli);
+      if (e.target.closest("[data-new-for]")) return g ? apptEditor({ walkName: g.name, walkPhone: g.phone || "" }) : apptEditor({ clientId: c.id, clientName: c.name });
+      if (!g) { location.hash = `#/admin/clientes/${c.id}`; return; }
+      const m = modal(`<h2 class="modal__t">${esc(g.name)} <small class="muted">invitado</small></h2><p class="muted">${esc([g.email, g.phone].filter(Boolean).join(" · "))}</p>
+        <div class="glist">${groups[g.guest].map((a) => `<button type="button" class="pick" data-appt="${a.id}"><span class="pick__main"><strong>${esc(fmtDate(a.starts_at, { weekday: "short", year: "numeric" }))} · ${fmtTime(a.starts_at)}</strong><small>${esc(a.service_name)} · ${esc(a.barber_name)} · ${esc(STATUS[a.status])}</small></span></button>`).join("")}</div>`, { wide: true });
+      m.el.addEventListener("click", (ev) => { const b = ev.target.closest("[data-appt]"); if (b) { m.close(); apptDetail(b.dataset.appt); } });
+    };
+    $(".adm__main").addEventListener("click", act); $(".adm__main").addEventListener("keydown", act);
   };
   return { html, mount };
 }
@@ -735,24 +832,33 @@ async function vCliente(id) {
     q(sb.from("client_admin_notes").select("*").eq("client_id", id).maybeSingle())
   ]);
   const self = id === State.user.id;
-  const html = shell("clientes", esc(p.full_name || p.email), `<button class="btn btn--sm" id="newAppt" type="button">Nueva cita para este cliente</button>`, `
-    <div class="cards-2">
-      <div class="card"><h2>Datos</h2><dl class="kv"><dt>Nombre</dt><dd>${esc(p.full_name || "—")}</dd><dt>Correo</dt><dd>${esc(p.email || "—")}</dd><dt>Celular</dt><dd>${esc(p.phone || "—")}</dd>
-        <dt>Registro</dt><dd>${esc(fmtDateTime(p.created_at))}</dd><dt>Citas</dt><dd>${appts.length} (${appts.filter((a) => a.status === "completada").length} completadas, ${appts.filter((a) => a.status === "cancelada").length} canceladas)</dd></dl>
-        <p class="muted small" style="margin-top:12px">Las contraseñas y datos de autenticación no se muestran: los gestiona Supabase Auth.</p></div>
+  const done = appts.filter((a) => a.status === "completada");
+  const next = appts.filter((a) => ["pendiente", "confirmada"].includes(a.status) && new Date(a.starts_at) > new Date()).at(-1);
+  const top = (arr) => Object.entries(arr.reduce((o, k) => (o[k] = (o[k] || 0) + 1, o), {})).sort((a, b) => b[1] - a[1])[0]?.[0];
+  const favS = top(done.flatMap((a) => a.services?.length ? a.services.map((s) => s.n) : [a.service_name])), favB = top(done.map((a) => a.barber_name));
+  const html = shell("clientes", "Cliente", `<a class="btn btn--sm btn--ghost" href="#/admin/clientes">Todos los clientes</a>`, `
+    <section class="uhero">${avatar(p.full_name || p.email)}<div><h2>${esc(p.full_name || p.email)}</h2><p>${esc([p.phone, p.email].filter(Boolean).join(" · ") || "Sin contacto")}</p><small>Cliente desde ${esc(fmtDate(p.created_at, { weekday: undefined, year: "numeric" }))}</small></div>
+      <div class="uhero__acts"><button class="btn btn--sm btn--light" id="newAppt" type="button">Nueva cita</button>${p.phone ? `<a class="btn btn--sm btn--light" href="${waLinkTo(p.phone)}" target="_blank" rel="noopener">WhatsApp</a><a class="btn btn--sm btn--light" href="tel:${esc(p.phone.replace(/[^\d+]/g, ""))}">Llamar</a>` : ""}${p.email ? `<a class="btn btn--sm btn--light" href="mailto:${esc(p.email)}">Correo</a>` : ""}</div></section>
+    <div class="kpis">
+      <div class="kpi"><span>Reservas</span><strong>${appts.length}</strong><small>${appts.filter((a) => a.status === "cancelada").length} canceladas</small></div>
+      <div class="kpi"><span>Atendidas</span><strong>${done.length}</strong><small>${done[0] ? `última: ${esc(fmtDate(done[0].starts_at, { weekday: undefined }))}` : "aún sin visitas"}</small></div>
+      <div class="kpi"><span>Ha pagado</span><strong>${money(done.reduce((t, a) => t + apptTotal(a), 0))}</strong><small>en citas atendidas</small></div>
+      <div class="kpi"><span>Le gusta</span><strong class="kpi__txt">${esc(favS || "—")}</strong><small>${favB ? `con ${esc(favB)}` : "aún sin datos"}</small></div>
+    </div>
+    ${next ? `<h2 class="uh">Próxima cita</h2><div class="agrid">${apptCard(next, { client: false })}</div>` : ""}
+    <h2 class="uh">Historial</h2>${appts.length ? `<div class="agrid">${appts.filter((a) => a !== next).map((a) => apptCard(a, { client: false })).join("")}</div>` : `<p class="muted">Sin citas.</p>`}
+    <div class="cards-2" style="margin-top:22px">
       <div class="card"><h2>Notas internas</h2><form class="form" id="noteForm"><textarea name="notes" rows="4" maxlength="2000" placeholder="Preferencias, observaciones… (solo administración)">${esc(notes?.notes || "")}</textarea>
         <button class="btn btn--sm" type="submit">Guardar nota</button></form></div>
-    </div>
-    <div class="card" style="margin-bottom:14px"><h2>Rol y acceso</h2>
+      <div class="card"><h2>Rol y acceso</h2>
       ${self ? `<p class="muted">Este es tu usuario. Para evitar perder el acceso, otro administrador debe cambiar tu rol.</p>` : `
       <form class="toolbar" id="roleForm"><select name="role" aria-label="Rol"><option value="client" ${p.role === "client" ? "selected" : ""}>Cliente</option><option value="barber" ${p.role === "barber" ? "selected" : ""}>Barbero (ve su agenda en Mi cuenta)</option><option value="admin" ${p.role === "admin" ? "selected" : ""}>Administrador (acceso total)</option></select>
         <select name="barber_id" aria-label="Perfil de barbero"><option value="">— Perfil de barbero —</option>${State.barbers.filter((b) => !b.deleted_at).map((b) => `<option value="${b.id}" ${b.id === p.barber_id ? "selected" : ""}>${esc(b.name)}</option>`).join("")}</select>
         <button class="btn btn--sm btn--ghost" type="submit">Guardar rol</button></form>`}</div>
-    <div class="card"><h2>Historial de citas</h2>${appts.length ? `<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Servicio</th><th>Barbero</th><th>Estado</th></tr></thead><tbody>
-      ${appts.map((a) => `<tr class="click" data-appt="${a.id}"><td>${esc(fmtDate(a.starts_at, { year: "numeric", weekday: "short" }))} · ${fmtTime(a.starts_at)}</td><td>${esc(a.service_name)}</td><td>${esc(a.barber_name)}</td><td>${statusBadge(a.status)}</td></tr>`).join("")}</tbody></table></div>` : `<p class="muted">Sin citas.</p>`}</div>`);
+    </div>`);
   const mount = () => {
     $("#newAppt").addEventListener("click", () => apptEditor({ clientId: p.id, clientName: p.full_name || p.email }));
-    $(".adm__main").addEventListener("click", (e) => { const r = e.target.closest("[data-appt]"); if (r) apptDetail(r.dataset.appt); });
+    bindAppts($(".adm__main"));
     $("#noteForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const { error } = await sb.from("client_admin_notes").upsert({ client_id: id, notes: formData(e.target).notes.trim(), updated_by: State.user.id, updated_at: new Date().toISOString() });
@@ -881,7 +987,7 @@ async function vConsentimientos() {
 }
 
 /* =============================== ESTADÍSTICAS =============================== */
-// Finanzas: gastos e ingresos se registran a mano en finance_entries (solo admin, RLS).
+// Finanzas en finance_entries (solo admin, RLS): las citas completadas y las ventas entran solas; lo demás se registra a mano.
 // Una cita NO es dinero recibido: el valor de citas completadas se muestra aparte como estimación.
 const EXP_CATS = ["Arriendo", "Servicios públicos", "Insumos y productos", "Nómina y comisiones", "Mantenimiento", "Equipos", "Publicidad", "Impuestos", "Otros"];
 const INC_CATS = ["Servicios", "Venta de productos", "Otros"];
@@ -901,9 +1007,18 @@ async function vEstadisticas(_, query) {
   ]);
   const of = (k) => rows.filter((r) => r.kind === k);
   const total = (k) => of(k).reduce((t, r) => t + Number(r.amount), 0);
-  const gastos = total("gasto"), ingresos = total("ingreso"), hasInc = of("ingreso").length > 0;
+  const gastos = total("gasto"), ingresos = total("ingreso");
+  const sumBy = (list, key) => Object.entries(list.reduce((o, r) => { const k = key(r); o[k] = (o[k] || 0) + Number(r.amount); return o; }, {})).sort((a, b) => b[1] - a[1]);
+  const moneyBars = (pairs) => { const max = Math.max(1, ...pairs.map(([, v]) => v)); return `<div class="bars bars--money">${pairs.map(([c, v]) => `<div class="bar"><span class="bar__label" title="${esc(c)}">${esc(c)}</span><span class="bar__track"><span class="bar__fill" style="width:${(v / max) * 100}%"></span></span><span class="bar__n">${money(v)}</span></div>`).join("")}</div>`; };
+  const countBars = (list) => { const max = Math.max(1, ...list.map((x) => x.n)); return `<div class="bars">${list.map((x) => `<div class="bar"><span class="bar__label" title="${esc(x.nombre)}">${esc(x.nombre)}</span><span class="bar__track"><span class="bar__fill" style="width:${(x.n / max) * 100}%"></span></span><span class="bar__n">${x.n}</span></div>`).join("")}</div>`; };
+  // Ingresos en el tiempo: por día hasta 45 días, por mes si el rango es mayor.
+  const span = (new Date(to) - new Date(from)) / 864e5 + 1, byMonth = span > 45;
+  const buckets = [];
+  for (let d = from; d <= to; d = byMonth ? addDays(monthEnd(d), 1) : addDays(d, 1)) buckets.push(byMonth ? d.slice(0, 7) : d);
+  const series = buckets.map((k) => [k, of("ingreso").filter((r) => String(r.entry_date).startsWith(k)).reduce((t, r) => t + Number(r.amount), 0)]);
+  const peak = Math.max(1, ...series.map(([, v]) => v));
+  const label2 = (k) => byMonth ? fmtDay(`${k}-15`, { month: "short", year: "2-digit" }) : fmtDay(k, { day: "numeric", month: "short" });
   const byCat = Object.entries(of("gasto").reduce((o, r) => (o[r.category] = (o[r.category] || 0) + Number(r.amount), o), {})).sort((a, b) => b[1] - a[1]);
-  const maxCat = Math.max(1, ...byCat.map(([, v]) => v));
   const list = query.tipo ? of(query.tipo) : rows;
   const label = `${fmtDay(from, { day: "numeric", month: "short", year: "numeric" })} – ${fmtDay(to, { day: "numeric", month: "short", year: "numeric" })}`;
 
@@ -915,20 +1030,21 @@ async function vEstadisticas(_, query) {
       <span class="muted small">${esc(label)}</span>
     </form>
     <div class="kpis">
-      <div class="kpi"><span>Ingresos registrados</span><strong>${hasInc ? money(ingresos) : "—"}</strong><small>${hasInc ? `${of("ingreso").length} registro(s)` : "Sin ingresos registrados"}</small></div>
-      <div class="kpi"><span>Gastos</span><strong>${money(gastos) || "$ 0"}</strong><small>${of("gasto").length} registro(s)</small></div>
-      <div class="kpi"><span>Balance neto</span><strong>${hasInc ? signed(ingresos - gastos) : "—"}</strong><small>${hasInc ? "ingresos − gastos" : "Falta registrar ingresos"}</small></div>
-      <div class="kpi"><span>Citas completadas</span><strong>${st ? st.completadas : "—"}</strong><small>${st?.valor_completadas != null ? `valor estimado ${money(st.valor_completadas)}` : "sin valor estimado"}</small></div>
+      <div class="kpi"><span>Ingresos</span><strong>${money(ingresos)}</strong><small>${of("ingreso").length} registro(s)</small></div>
+      <div class="kpi"><span>Gastos</span><strong>${money(gastos)}</strong><small>${of("gasto").length} registro(s)</small></div>
+      <div class="kpi"><span>Balance neto</span><strong>${signed(ingresos - gastos)}</strong><small>ingresos − gastos</small></div>
+      <div class="kpi"><span>Citas completadas</span><strong>${st ? st.completadas : "—"}</strong><small>${st ? `${st.total - st.canceladas - st.completadas} por atender · ${st.canceladas} canceladas` : "rango muy largo"}</small></div>
     </div>
-    ${hasInc ? "" : `<div class="notice">Para calcular el balance faltan los <b>ingresos reales</b>. Una cita reservada o completada no es dinero recibido (la web no cobra en línea). Registra con <b>Registrar ingreso</b> lo que realmente entró a caja; puede ser el total del día.${st?.valor_completadas != null ? ` Solo como referencia: las citas completadas del periodo suman ${money(st.valor_completadas)} según el precio guardado al reservar${st.completadas_sin_precio ? ` (${st.completadas_sin_precio} sin precio no suman)` : ""}.` : ""}</div>`}
-    <div class="cards-2">
-      <div class="card"><h2>Gastos por categoría</h2>${byCat.length ? `<div class="bars bars--money">${byCat.map(([c, v]) => `<div class="bar"><span class="bar__label" title="${esc(c)}">${esc(c)}</span><span class="bar__track"><span class="bar__fill" style="width:${(v / maxCat) * 100}%"></span></span><span class="bar__n">${money(v)}</span></div>`).join("")}</div>` : `<p class="muted">Sin gastos en el periodo.</p>`}</div>
-      <div class="card"><h2>Resumen del periodo</h2><dl class="kv">
-        <dt>Ingresos</dt><dd>${hasInc ? money(ingresos) : "Sin registrar"}</dd>
-        <dt>Gastos</dt><dd>${money(gastos) || "$ 0"}</dd>
-        <dt>Balance neto</dt><dd><b>${hasInc ? signed(ingresos - gastos) : "—"}</b></dd>
-        ${st ? `<dt>Citas atendidas o por atender</dt><dd>${st.total - st.canceladas}</dd><dt>Canceladas</dt><dd>${st.canceladas}</dd>` : ""}
-      </dl></div>
+    <div class="card chart-card"><h2>Ingresos ${byMonth ? "por mes" : "por día"}</h2>
+      ${ingresos ? `<div class="vchart" role="img" aria-label="Ingresos ${byMonth ? "por mes" : "por día"}; máximo ${money(Math.max(...series.map(([, v]) => v)))}. El detalle está en la tabla de movimientos.">
+        ${series.map(([k, v]) => `<div class="vchart__c" data-tip="${esc(label2(k))}: ${money(v)}"><i style="height:${(v / peak) * 100}%"></i></div>`).join("")}</div>
+      <div class="vchart__x"><span>${esc(label2(buckets[0]))}</span><span>Máximo: ${money(Math.max(...series.map(([, v]) => v)))}</span><span>${esc(label2(buckets.at(-1)))}</span></div>` : `<p class="muted">Aún no hay ingresos en este periodo. Las citas completadas y las ventas aparecen aquí solas.</p>`}</div>
+    <div class="cards-3">
+      <div class="card"><h2>Ingresos por origen</h2>${ingresos ? moneyBars(sumBy(of("ingreso"), (r) => r.category)) : `<p class="muted">Sin ingresos en el periodo.</p>`}</div>
+      <div class="card"><h2>Medios de pago</h2>${ingresos ? moneyBars(sumBy(of("ingreso"), (r) => r.method || "Sin indicar")) : `<p class="muted">Sin ingresos en el periodo.</p>`}</div>
+      <div class="card"><h2>Gastos por categoría</h2>${byCat.length ? moneyBars(byCat) : `<p class="muted">Sin gastos en el periodo.</p>`}</div>
+      <div class="card"><h2>Servicios más pedidos</h2>${st?.por_servicio?.length ? countBars(st.por_servicio) : `<p class="muted">Sin citas en el periodo.</p>`}</div>
+      <div class="card"><h2>Citas por barbero</h2>${st?.por_barbero?.length ? countBars(st.por_barbero) : `<p class="muted">Sin citas en el periodo.</p>`}</div>
     </div>
     <div class="toolbar"><div class="seg" role="group" aria-label="Tipo">${[["", "Todos"], ["gasto", "Gastos"], ["ingreso", "Ingresos"]].map(([k, v]) => `<a href="${hrefWith("#/admin/estadisticas", query, { tipo: k })}" class="${(query.tipo || "") === k ? "is-on" : ""}">${v}</a>`).join("")}</div></div>
     ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Categoría</th><th class="num">Valor</th><th></th></tr></thead><tbody>
@@ -936,7 +1052,7 @@ async function vEstadisticas(_, query) {
         <td>${esc(r.description)}${r.notes ? `<br><span class="muted">${esc(r.notes)}</span>` : ""}</td><td>${esc(r.category)}${r.method ? `<br><span class="muted">${esc(r.method)}</span>` : ""}</td>
         <td class="num">${r.kind === "gasto" ? "−" : ""}${money(r.amount)}</td>
         <td class="nowrap"><button class="btn btn--sm btn--ghost" data-edit-fin="${r.id}">Editar</button> <button class="btn btn--sm btn--ghost btn--danger-text" data-del-fin="${r.id}">Eliminar</button></td></tr>`).join("")}
-    </tbody></table></div>` : emptyState("No hay movimientos en este periodo.", "Registra los gastos del local (arriendo, insumos, servicios…) y los ingresos recibidos.")}`);
+    </tbody></table></div>` : emptyState("No hay movimientos en este periodo.", "Registra los gastos del local con “Registrar gasto”.")}`);
 
   const mount = () => {
     $("#perForm").addEventListener("submit", (e) => { e.preventDefault(); const f = formData(e.target); if (f.desde && f.hasta) go(`#/admin/estadisticas?p=rango&desde=${f.desde}&hasta=${f.hasta}`); });
@@ -981,63 +1097,95 @@ function financeEditor(r = {}) {
   });
 }
 
-/* Ventas en el local (cliente que llega sin cita): servicios + adicionales; se guardan como ingresos en finanzas. */
+/* Ventas en el local (cliente que llega sin cita): caja visual. Se guardan como ingresos en finanzas. */
+const SALE_PAY = [["Efectivo", '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/>'], ["Nequi", '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>'],
+  ["Transferencia", '<path d="M4 8h15l-4-4M20 16H5l4 4"/>'], ["Tarjeta", '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>']];
 async function vVentas() {
-  const svcs = State.services.filter((s) => s.active && !s.deleted_at), barbers = State.barbers.filter((b) => b.active && !b.deleted_at);
   const today = todayYmd();
+  const svcs = State.services.filter((s) => s.active && !s.deleted_at), barbers = State.barbers.filter((b) => b.active && !b.deleted_at);
   const sales = (await q(sb.from("finance_entries").select("*").eq("kind", "ingreso").eq("entry_date", today).order("created_at", { ascending: false }))).filter((r) => r.description.startsWith("Venta"));
+  const dayTotal = sales.reduce((t, r) => t + Number(r.amount), 0);
+  const catalog = [
+    ...svcs.map((s) => ({ key: `s:${s.id}`, tab: "Servicios", n: s.name, p: s.price == null ? null : Number(s.price), img: svcPhoto(s), svc: true })),
+    ...Object.entries(SHOP).flatMap(([c, l]) => l.map(([n, p, img]) => ({ key: `x:${img}`, tab: c, n, p, img: `assets/tienda/mini/${img}.jpg`, svc: false })))
+  ];
+  const tabs = ["Servicios", ...Object.keys(SHOP)], cart = new Map();
   const html = shell("ventas", "Ventas", "", `
-    <form class="form card" id="saleForm" novalidate>
-      <h2>Nueva venta</h2>
-      <p class="muted small">Para clientes que llegan sin cita. El precio se puede ajustar; al guardar se suma a Estadísticas como ingreso.</p>
-      <fieldset class="field"><legend>Servicios</legend><div class="sale__list">
-        ${svcs.map((s) => `<label class="sale__row"><input type="checkbox" name="svc" value="${s.id}"><span>${esc(s.name)}</span>
-          <input type="number" min="0" step="any" inputmode="decimal" data-price="${s.id}" value="${s.price != null ? Number(s.price) : ""}" placeholder="Precio" aria-label="Precio de ${esc(s.name)}"></label>`).join("") || `<p class="muted">No hay servicios activos.</p>`}
-      </div></fieldset>
-      <fieldset class="field"><legend>Adicionales</legend><div class="sale__list">
-        ${SHOP_ITEMS.map(([n, p], i) => `<label class="sale__row"><span>${esc(n)} <small class="muted">${money(p)}</small></span>
-          <input type="number" min="0" max="20" step="1" inputmode="numeric" data-x="${i}" value="0" aria-label="Cantidad de ${esc(n)}"></label>`).join("")}
-      </div></fieldset>
-      <div class="grid-2">
-        <label class="field"><span>Barbero</span><select name="barber"><option value="">—</option>${barbers.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join("")}</select></label>
-        <label class="field"><span>Medio de pago</span><input name="method" maxlength="40" list="saleMethods" value="Efectivo"><datalist id="saleMethods"><option value="Efectivo"><option value="Transferencia"><option value="Nequi"><option value="Tarjeta"></datalist></label>
-        <label class="field"><span>Cliente (opcional)</span><input name="client" maxlength="80"></label>
-        <label class="field"><span>Fecha</span><input name="entry_date" type="date" required value="${today}"></label>
-      </div>
-      <p class="sale__total">Total: <strong id="saleTotal">${money(0) || "$ 0"}</strong></p>
-      <button class="btn btn--block" type="submit" data-busy="Guardando…">Registrar venta</button><p class="form-msg" id="saleMsg" role="alert"></p>
-    </form>
-    <div class="card"><h2>Ventas de hoy</h2>${sales.length ? `<div class="table-wrap"><table><thead><tr><th>Descripción</th><th>Medio</th><th class="num">Valor</th></tr></thead><tbody>
-      ${sales.map((r) => `<tr><td>${esc(r.description)}${r.notes ? `<br><span class="muted">${esc(r.notes)}</span>` : ""}</td><td>${esc(r.method || "")}</td><td class="num">${money(r.amount)}</td></tr>`).join("")}
-      </tbody></table></div><p class="muted small">Total de hoy: <b>${money(sales.reduce((t, r) => t + Number(r.amount), 0))}</b>. Para editar o borrar, ve a Estadísticas.</p>` : `<p class="muted">Aún no hay ventas hoy.</p>`}</div>`);
+    <div class="pos__today">
+      <div><span>Vendido hoy</span><b>${money(dayTotal)}</b></div>
+      ${SALE_PAY.map(([m]) => [m, sales.filter((r) => r.method === m).reduce((t, r) => t + Number(r.amount), 0)]).filter(([, v]) => v).map(([m, v]) => `<div><span>${m}</span><b>${money(v)}</b></div>`).join("")}
+    </div>
+    <div class="pos">
+      <section class="pos__cat">
+        <input type="search" class="shop__search" id="posQ" placeholder="Buscar servicio o producto…" aria-label="Buscar">
+        <div class="chips" role="group" aria-label="Categorías">${tabs.map((t, i) => `<button type="button" class="chip ${i ? "" : "is-on"}" data-tab="${t}">${t}</button>`).join("")}</div>
+        <div class="tiles">${catalog.map((c) => `<button type="button" class="tile${c.svc ? "" : " tile--pk"}" data-add="${c.key}" data-tab2="${c.tab}" data-f="${esc(c.n.toLowerCase())}" ${c.tab === "Servicios" ? "" : "hidden"}>
+          <span class="tile__pic"><img src="${esc(c.img)}" alt="" loading="lazy"></span><span class="tile__n" hidden></span>
+          <span class="tile__name">${esc(c.n)}</span><span class="tile__price">${c.p == null ? "Precio libre" : money(c.p)}</span></button>`).join("")}</div>
+        <div class="card pos__hist"><h2>Últimas ventas de hoy</h2>${sales.length ? `<ul>${sales.slice(0, 12).map((r) => `<li><span>${esc(r.description.replace(/^Venta( adicionales)?: /, ""))}${r.notes ? `<small>${esc(r.notes)}</small>` : ""}</span><b>${money(r.amount)}</b></li>`).join("")}</ul><p class="muted small">Para editar o borrar una venta, ve a Estadísticas.</p>` : `<p class="muted">Aún no hay ventas hoy. ¡La primera se registra en segundos!</p>`}</div>
+      </section>
+      <aside class="ticket2" id="ticket">
+        <h2>Venta actual</h2>
+        <ul class="ticket2__items" id="tkItems"></ul>
+        <div class="ticket2__sec"><span>Atendió</span><div class="tpills">${barbers.map((b) => `<button type="button" class="tpill" data-barber="${b.id}">${avatar(b.name, b.photo_url)}${esc(b.name)}</button>`).join("") || `<small>Sin barberos activos</small>`}</div></div>
+        <div class="ticket2__sec"><span>Medio de pago</span><div class="tpay">${SALE_PAY.map(([m, ic], i) => `<button type="button" class="${i ? "" : "is-on"}" data-pay="${m}"><svg viewBox="0 0 24 24" aria-hidden="true">${ic}</svg>${m}</button>`).join("")}</div></div>
+        <div class="ticket2__row"><label><span>Cliente (opcional)</span><input id="tkClient" maxlength="80" placeholder="Nombre"></label><label><span>Fecha</span><input id="tkDate" type="date" value="${today}" max="${today}"></label></div>
+        <button class="pos__jump" id="tkJump" type="button" hidden>Ver venta <b id="tkJumpN"></b></button>
+        <button class="ticket2__pay" id="tkPay" type="button" data-busy="Guardando…" disabled>Cobrar <b id="tkTotal">${money(0)}</b></button>
+        <p class="form-msg" id="tkMsg" role="alert"></p>
+      </aside>
+    </div>`);
 
   const mount = () => {
-    const form = $("#saleForm");
-    const read = () => {
-      const lines = $$("[name=svc]:checked", form).map((c) => ({ s: svcs.find((x) => x.id === c.value), amount: Number($(`[data-price="${c.value}"]`, form).value) }));
-      const extras = $$("[data-x]", form).map((i) => ({ item: SHOP_ITEMS[i.dataset.x], q: Math.max(0, Math.floor(Number(i.value) || 0)) })).filter((x) => x.q);
-      const extTotal = extras.reduce((t, x) => t + x.q * x.item[1], 0);
-      return { lines, extras, extTotal, total: lines.reduce((t, l) => t + (l.amount || 0), 0) + extTotal };
+    let barber = barbers.length === 1 ? barbers[0].id : "", method = SALE_PAY[0][0], tab = "Servicios";
+    const total = () => [...cart.values()].reduce((t, l) => t + (Number(l.p) || 0) * l.q, 0);
+    const sumUp = () => { $("#tkTotal").textContent = money(total()); $("#tkPay").disabled = !cart.size; $("#tkJump").hidden = !cart.size; $("#tkJumpN").textContent = money(total()); };
+    const paint = () => {
+      $("#tkItems").innerHTML = cart.size ? [...cart.values()].map((l) => `<li><img src="${esc(l.img)}" alt=""><div><b>${esc(l.n)}</b>
+          ${l.svc ? `<label class="tk__price">$ <input type="number" min="0" step="any" inputmode="decimal" data-price="${l.key}" value="${l.p ?? ""}" placeholder="Precio" aria-label="Precio de ${esc(l.n)}"></label>` : `<small>${money(l.p)} c/u</small>`}</div>
+          <span class="qty"><button type="button" data-q="${l.key}" data-d="-1" aria-label="Quitar uno">−</button><b>${l.q}</b><button type="button" data-q="${l.key}" data-d="1" aria-label="Agregar uno">+</button></span></li>`).join("")
+        : `<li class="ticket2__empty">Toca un servicio o producto para empezar</li>`;
+      $$("[data-add]").forEach((b) => { const l = cart.get(b.dataset.add), n = $(".tile__n", b); n.hidden = !l; n.textContent = l?.q || ""; b.classList.toggle("is-in", !!l); });
+      sumUp();
     };
-    form.addEventListener("input", () => { $("#saleTotal").textContent = money(read().total) || "$ 0"; });
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const f = formData(form), { lines, extras, extTotal } = read(), msg = $("#saleMsg");
-      if (!lines.length && !extras.length) return setMsg(msg, "Elige al menos un servicio o un adicional.");
-      if (lines.some((l) => !(l.amount > 0))) return setMsg(msg, "Escribe el precio de cada servicio elegido.");
-      if (!f.entry_date) return setMsg(msg, "Indica la fecha.");
-      const who = [f.barber ? barberName(f.barber) : "", f.client.trim()].filter(Boolean).join(" · ");
-      const base = { kind: "ingreso", entry_date: f.entry_date, method: f.method.trim() || null, notes: who || null };
+    const filter = () => {
+      const t = $("#posQ").value.trim().toLowerCase();
+      $$("[data-add]").forEach((b) => { b.hidden = t ? !b.dataset.f.includes(t) : b.dataset.tab2 !== tab; });
+    };
+    $("#posQ").addEventListener("input", filter);
+    $(".pos").addEventListener("input", (e) => { const k = e.target.dataset?.price; if (k) { cart.get(k).p = e.target.value === "" ? null : Number(e.target.value); sumUp(); } });
+    $(".pos").addEventListener("click", (e) => {
+      const tb = e.target.closest("[data-tab]");
+      if (tb) { tab = tb.dataset.tab; $("#posQ").value = ""; $$("[data-tab]").forEach((x) => x.classList.toggle("is-on", x === tb)); return filter(); }
+      const add = e.target.closest("[data-add]");
+      if (add) { const c = catalog.find((x) => x.key === add.dataset.add), l = cart.get(c.key); if (l) l.q++; else cart.set(c.key, { ...c, q: 1 }); return paint(); }
+      const qb = e.target.closest("[data-q]");
+      if (qb) { const l = cart.get(qb.dataset.q); l.q += +qb.dataset.d; if (l.q < 1) cart.delete(l.key); return paint(); }
+      const br = e.target.closest("[data-barber]");
+      if (br) { barber = barber === br.dataset.barber ? "" : br.dataset.barber; return $$("[data-barber]").forEach((x) => x.classList.toggle("is-on", x.dataset.barber === barber)); }
+      const pm = e.target.closest("[data-pay]");
+      if (pm) { method = pm.dataset.pay; return $$("[data-pay]").forEach((x) => x.classList.toggle("is-on", x === pm)); }
+    });
+    $("#tkJump").addEventListener("click", () => $("#ticket").scrollIntoView({ behavior: "smooth" }));
+    $("#tkPay").addEventListener("click", (e) => {
+      const lines = [...cart.values()], msg = $("#tkMsg"), day = $("#tkDate").value;
+      if (lines.some((l) => !(l.p > 0))) return setMsg(msg, "Escribe el precio de cada servicio.");
+      if (!day) return setMsg(msg, "Indica la fecha.");
+      const base = { kind: "ingreso", entry_date: day, method, notes: [barber ? barberName(barber) : "", $("#tkClient").value.trim()].filter(Boolean).join(" · ") || null };
+      const prods = lines.filter((l) => !l.svc), sum = total();
       const rows = [
-        ...lines.map((l) => ({ ...base, description: `Venta: ${l.s.name}`.slice(0, 200), category: "Servicios", amount: l.amount })),
-        ...(extras.length ? [{ ...base, description: `Venta adicionales: ${extras.map((x) => `${x.q}× ${x.item[0]}`).join(", ")}`.slice(0, 200), category: "Venta de productos", amount: extTotal }] : [])
+        ...lines.filter((l) => l.svc).map((l) => ({ ...base, description: `Venta: ${l.n}${l.q > 1 ? ` ×${l.q}` : ""}`.slice(0, 200), category: "Servicios", amount: l.p * l.q })),
+        ...(prods.length ? [{ ...base, description: `Venta adicionales: ${prods.map((l) => `${l.q}× ${l.n}`).join(", ")}`.slice(0, 200), category: "Venta de productos", amount: prods.reduce((t, l) => t + l.p * l.q, 0) }] : [])
       ];
-      busy(e.submitter, async () => {
+      busy(e.currentTarget, async () => {
         const { error } = await sb.from("finance_entries").insert(rows);
         if (error) return setMsg(msg, friendly(error));
-        toast("Venta registrada en finanzas."); refresh();
+        $("#ticket").innerHTML = `<div class="ticket2__done"><span class="ticket2__check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><h2>¡Venta registrada!</h2><p class="ticket2__big">${money(sum)}</p><p>${esc(method)} · sumado a finanzas</p><button class="ticket2__pay" type="button" id="tkNew">Nueva venta</button></div>`;
+        $("#tkNew").addEventListener("click", refresh); $("#tkNew").focus(); $("#ticket").scrollIntoView({ block: "center" });
       });
     });
+    if (barber) $(`[data-barber="${barber}"]`)?.classList.add("is-on");
+    paint();
   };
   return { html, mount };
 }

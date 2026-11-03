@@ -9,7 +9,8 @@ const TZ = "America/Bogota";
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
 type Appt = { id: string; cart_id: string | null; service_id: string; client_id: string | null; client_name: string; client_email: string; barber_name: string; service_name: string;
-  price: number | null; starts_at: string; ends_at: string; status: string; extras: { n: string; q: number; p: number }[] | null };
+  price: number | null; starts_at: string; ends_at: string; status: string; extras: { n: string; q: number; p: number }[] | null;
+  services: { id: string; n: string; p: number | null }[] | null; payment_method: string | null };
 
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 const fecha = (d: string) => new Date(d).toLocaleDateString("es-CO", { timeZone: TZ, weekday: "long", day: "numeric", month: "long" });
@@ -45,6 +46,7 @@ function mail(kind: "confirmacion" | "recordatorio", l: Appt[], neg: Record<stri
   const a = l[0], last = l[l.length - 1], extras = a.extras ?? [];
   const sSum = l.reduce((t, x) => t + Number(x.price ?? 0), 0), xSum = extras.reduce((t, e) => t + e.q * e.p, 0);
   const priced = l.every((x) => x.price != null);
+  const lines = l.flatMap((x) => x.services?.length ? x.services : [{ id: x.service_id, n: x.service_name, p: x.price }]);
   const pend = l.some((x) => x.status === "pendiente");
   const first = esc(String(a.client_name || "").trim().split(/\s+/)[0] || "");
   const subject = kind === "recordatorio" ? `Recordatorio: tu cita es a las ${hora(a.starts_at)}`
@@ -83,14 +85,14 @@ function mail(kind: "confirmacion" | "recordatorio", l: Appt[], neg: Record<stri
           <div style="font-size:17px;font-weight:700;margin-top:6px">${esc(hora(a.starts_at))} – ${esc(hora(last.ends_at))}</div></td></tr>
         <tr><td colspan="2" style="padding:0 18px 16px;font-size:13px;color:#cfc9bf">Barbero: <b style="color:#fff">${esc(a.barber_name)}</b>${neg.direccion ? ` · ${esc(neg.direccion)}` : ""}</td></tr></table>
       <table role="presentation" style="width:100%;border-collapse:collapse;margin-top:22px">
-        ${l.map((x) => item(esc(svcPhoto(x.service_name, photos.get(x.service_id))), esc(x.service_name), `Servicio · ${Math.round((+new Date(x.ends_at) - +new Date(x.starts_at)) / 60000)} min · ${esc(hora(x.starts_at))}`, x.price != null ? money(Number(x.price)) : "Por confirmar")).join("")}
+        ${lines.map((x) => item(esc(svcPhoto(x.n, photos.get(x.id))), esc(x.n), "Servicio", x.p != null ? money(Number(x.p)) : "Por confirmar")).join("")}
         ${extras.map((e) => item(SHOP_IMG[e.n] ? `${SITE}assets/tienda/mini/${SHOP_IMG[e.n]}.jpg` : `${SITE}assets/logo.jpg`, esc(e.n), `Cantidad ${e.q} · ${money(e.p)} c/u`, money(e.q * e.p))).join("")}
       </table>
       <table role="presentation" style="width:100%;border-collapse:collapse;border-top:1px solid ${LINE};padding-top:8px">
         <tr><td colspan="2" style="height:8px"></td></tr>
         ${priced ? sum("Servicios", money(sSum)) : ""}
         ${extras.length ? sum("Snacks y bebidas", money(xSum)) : ""}
-        ${sum("Pago", "En la barbería")}
+        ${sum("Pago", a.payment_method ? `${esc(a.payment_method)} · en la barbería` : "En la barbería")}
         ${priced ? sum("Total", money(sSum + xSum), true) : ""}
       </table>
       <table role="presentation" style="width:100%;border-collapse:collapse;margin:26px 0 6px"><tr>

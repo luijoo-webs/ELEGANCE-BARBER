@@ -2,8 +2,8 @@
 import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday,
   fmtDay, fmtTime, fmtDate, hhmm, ymd, friendly, toast, loader, emptyState, busy, scheduleByDay, barberWorkDays, waLink, setMsg,
-  mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal, modal
-} from "./core.js?v=20261102i";
+  mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal, modal, minutes
+} from "./core.js?v=20261103b";
 
 const N = () => State.settings.negocio || {};
 const R = () => State.settings.reservas || {};
@@ -26,6 +26,8 @@ const REAL = (n) => F(`real-${n}`);   // fotos reales de la barbería
 const head = (title, id, link = "") => `<header class="lp-head rv"><h2${id ? ` id="${id}"` : ""}>${title}</h2>${link}</header>`;
 const words = (t) => esc(t).split(/\s+/).map((w, k) => `<span class="w"><span style="--i:${k}">${w}</span></span>`).join(" ");
 const ICON = {
+  pin: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s7-7.2 7-12.5A7 7 0 0 0 5 9.5C5 14.8 12 22 12 22z"/><circle cx="12" cy="9.5" r="2.5"/></svg>`,
+  chat: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 1-13.3 7.9L3 21l1.2-4.5A9 9 0 1 1 21 12z"/></svg>`,
   cal: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>`,
   user: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>`,
   check: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16.5 9"/></svg>`,
@@ -41,6 +43,9 @@ export function viewHome() {
   const hours = scheduleByDay(null);
   const hasHours = hours.some((d) => d.length);
   const order = [1, 2, 3, 4, 5, 6, 0];
+  const dow = weekday(todayYmd()), nowM = minutes(hhmm(new Date()));
+  // shortcut: no mira cierres ni festivos del panel (time_off no se carga en la web pública); solo el horario semanal.
+  const isOpen = State.schedules.some((s) => !s.barber_id && s.weekday === dow && nowM >= minutes(s.start_time) && nowM < minutes(s.end_time));
   const cats = State.categories.filter((c) => c.active && services.some((s) => s.category_id === c.id));
   const uncategorized = services.filter((s) => !cats.some((c) => c.id === s.category_id));
   const heroImg = safeUrl(n.hero_imagen);
@@ -154,27 +159,31 @@ export function viewHome() {
       : `<img src="${esc(src)}" alt="" loading="lazy">`}<span>${ICON.ig}</span></a>`).join("")}</div>
   </section>` : ""}
 
-  <section class="visit" id="visitanos" aria-labelledby="t-visit">
-    <div class="wrap visit__grid">
-      <div class="visit__info">
-        ${head("Visítanos", "t-visit")}
-        <div class="visit__item rv"><span>Dirección</span><p>${place ? esc(place) : "Por confirmar"}</p>${mapQ ? `<button type="button" class="link-line" data-route-open>Cómo llegar</button>` : ""}</div>
-        <div class="visit__item rv" style="--i:1"><span>Reservas</span><p>En línea: eliges servicio, barbero y hora.</p><a class="link-line" href="#/reservar">Reservar</a></div>
-        <div class="visit__item rv" style="--i:2" id="horario"><span>Horario</span>
-          ${hasHours ? `<dl class="hours">${order.map((d) => `<div><dt>${DAYS[d]}</dt><dd>${hours[d].length ? esc(hours[d].join(" · ")) : "Cerrado"}</dd></div>`).join("")}</dl>` : `<p>Por confirmar</p>`}</div>
-        <div class="visit__links rv" style="--i:3">
-          ${wa ? `<a href="${esc(wa)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}
-          ${ig ? `<a href="${esc(n.instagram)}" target="_blank" rel="noopener">Instagram</a>` : ""}
-          ${n.telefono ? `<a href="tel:${esc(String(n.telefono).replace(/[^\d+]/g, ""))}">${esc(n.telefono)}</a>` : ""}
-          ${n.correo ? `<a href="mailto:${esc(n.correo)}">${esc(n.correo)}</a>` : ""}
+  <section class="visit" id="visitanos" aria-labelledby="t-visit" style="--vbg:url('${esc(new URL(F("hero-local"), document.baseURI).href)}')">
+    <div class="wrap">
+      <header class="visit__top rv">
+        <div><p class="visit__kick">Visítanos</p><h2 id="t-visit">${place ? esc(n.direccion) : "Te esperamos"}</h2></div>
+        ${hasHours ? `<span class="visit__state ${isOpen ? "is-open" : ""}"><i></i>${isOpen ? "Abierto ahora" : "Cerrado ahora"}</span>` : ""}
+      </header>
+      <div class="visit__grid">
+        ${mapQ ? `<div class="visit__map rv">
+          ${mapAllowed() ? `<iframe title="Mapa: ${esc(place)}" src="https://maps.google.com/maps?q=${encodeURIComponent(mapQ)}&z=16&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>`
+            : `<div class="visit__nomap"><p>El mapa lo carga Google, que usa sus propias cookies.</p><button type="button" class="btn btn--sm" data-cookies="all">Ver mapa</button><a class="link-line" href="#/legal/cookies">Política de cookies</a></div>`}
+        </div>` : ""}
+        <div class="visit__side">
+          <div class="vacts rv">
+            ${mapQ ? `<button type="button" class="vact vact--main" data-route-open>${ICON.pin}<b>Cómo llegar</b><small>Google Maps o Waze</small></button>` : ""}
+            <a class="vact" href="#/reservar">${ICON.cal}<b>Reservar</b><small>Eliges barbero y hora</small></a>
+            ${wa ? `<a class="vact" href="${esc(wa)}" target="_blank" rel="noopener">${ICON.chat}<b>WhatsApp</b><small>Escríbenos</small></a>` : ""}
+            ${ig ? `<a class="vact" href="${esc(n.instagram)}" target="_blank" rel="noopener">${ICON.ig}<b>Instagram</b><small>${igH ? `@${esc(igH)}` : "Síguenos"}</small></a>` : ""}
+          </div>
+          <div class="vhours rv" id="horario"><h3>Horario</h3>
+            ${hasHours ? `<dl>${order.map((d) => `<div class="${d === dow ? "is-today" : ""}"><dt>${DAYS[d]}${d === dow ? " <em>Hoy</em>" : ""}</dt><dd>${hours[d].length ? esc(hours[d].join(" · ")) : "Cerrado"}</dd></div>`).join("")}</dl>` : `<p>Por confirmar</p>`}
+          </div>
+          ${n.telefono || n.correo ? `<p class="visit__contact rv">${n.telefono ? `<a href="tel:${esc(String(n.telefono).replace(/[^\d+]/g, ""))}">${esc(n.telefono)}</a>` : ""}${n.correo ? `<a href="mailto:${esc(n.correo)}">${esc(n.correo)}</a>` : ""}</p>` : ""}
         </div>
       </div>
-      ${mapQ ? `<div class="visit__map rv">
-        ${mapAllowed() ? `<iframe title="Mapa: ${esc(place)}" src="https://maps.google.com/maps?q=${encodeURIComponent(mapQ)}&z=16&output=embed" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>`
-          : `<div class="visit__nomap"><p>El mapa lo carga Google, que usa sus propias cookies.</p><button type="button" class="btn btn--sm" data-cookies="all">Ver mapa</button><a class="link-line" href="#/legal/cookies">Política de cookies</a></div>`}
-        <button type="button" class="visit__go" data-route-open><span>Cómo llegar</span><small>Google Maps o Waze</small></button>
-      </div>
-      <dialog class="route-dlg" id="routeDlg" aria-labelledby="t-route">
+      ${mapQ ? `<dialog class="route-dlg" id="routeDlg" aria-labelledby="t-route">
         <p class="eyebrow-lp">Cómo llegar</p>
         <h3 id="t-route">${esc(place)}</h3>
         <div class="route-dlg__opts">
@@ -216,7 +225,7 @@ export function mountHome() {
 }
 
 // shortcut: productos fijos en código (lista enviada por el dueño); pasarlos a Supabase si el dueño quiere editarlos desde el panel.
-const SHOP = {
+export const SHOP = {
   Snacks: [["Detodito", 3500, "detodito"], ["Margaritas (pollo, limón, tomate…)", 3000, "margaritas"], ["Natuchip", 3000, "natuchip"], ["Boliquesos", 2500, "boliquesos"],
     ["Doritos", 3000, "doritos"], ["Cheestris", 2500, "cheestre"], ["Choclitos", 2500, "choclitos"], ["Maní", 2000, "manis"], ["Chokis", 2000, "chockis"]],
   Cervezas: [["Coronita", 4500, "coronita"], ["Club Colombia", 4500, "club-colombia"], ["Stella Artois botella", 6000, "stella-botella"], ["Stella Artois lata", 5000, "stella-lata"],
@@ -342,8 +351,8 @@ function cartHtml() {
   const item = (href, pic, name, price, meta, acts) => `<li class="ci"><a class="ci__pic" href="${href}" data-cart-close tabindex="-1" aria-hidden="true">${pic}</a>
     <div class="ci__body"><div class="ci__top"><a class="ci__name" href="${href}" data-cart-close>${esc(name)}</a><span class="ci__price">${price}</span></div><p class="ci__meta">${meta}</p><div class="ci__acts">${acts}</div></div></li>`;
   return `<ul class="cart__list">
-    ${svcs.map((s) => item(`#/servicio/${s.id}`, `<img src="${esc(svcPhoto(s))}" alt="">`, s.name, priceLabel(s.price), `Servicio · ${durLabel(s.duration_min)}`,
-      `<span class="ci__tag">1 cita</span><button type="button" class="ci__rm" data-cart-rm="${s.id}" aria-label="Eliminar ${esc(s.name)}">Eliminar</button>`)).join("")}
+    ${svcs.map((s) => item(`#/servicio/${s.id}`, `<img src="${esc(svcPhoto(s))}" alt="">`, s.name, priceLabel(s.price), "Servicio",
+      `<span></span><button type="button" class="ci__rm" data-cart-rm="${s.id}" aria-label="Eliminar ${esc(s.name)}">Eliminar</button>`)).join("")}
     ${snacks.map(([n, p, img]) => item(`#/producto/${img}`, `<img src="assets/tienda/mini/${img}.jpg" alt="">`, n, money(p * ex[n]), `${money(p)} c/u`,
       `<span class="qty qty--box"><button type="button" data-cx="${esc(n)}" data-d="-1" aria-label="Quitar uno">−</button><b>${ex[n]}</b><button type="button" data-cx="${esc(n)}" data-d="1" aria-label="Agregar uno">+</button></span><button type="button" class="ci__rm" data-cx="${esc(n)}" data-d="-10" aria-label="Eliminar ${esc(n)}">Eliminar</button>`)).join("")}
   </ul>
@@ -351,6 +360,7 @@ function cartHtml() {
   <div class="cart__foot">
     ${svcs.length ? `<p class="cart__row"><span>Servicios</span><span>${money(sSum)}</span></p>` : ""}
     ${snacks.length ? `<p class="cart__row"><span>Snacks y bebidas</span><span>${money(xSum)}</span></p>` : ""}
+    ${svcs.length ? `<p class="cart__row"><span>Tu cita dura</span><span>${durLabel(Math.max(...svcs.map((s) => s.duration_min)))} en total</span></p>` : ""}
     <p class="cart__row"><span>Pago</span><span class="muted">En la barbería</span></p>
     <p class="cart__total"><span>Total</span><strong>${money(sSum + xSum)}</strong></p>
     ${svcs.length ? `<a class="btn btn--lg btn--block" href="#/reservar" data-cart-close>Reservar · elegir barbero y hora</a>`
@@ -408,7 +418,7 @@ const SVC_PHOTO = [
   [/corte y barba/, REAL("mohicano-barba")], [/barba/, F("srv-barba")], [/tijera/, REAL("pompadour")],
   [/secado|planchado/, REAL("clasico-linea")], [/cerquillo/, REAL("cerquillo")]
 ];
-function svcPhoto(s) {
+export function svcPhoto(s) {
   if (safeUrl(s.image_url)) return s.image_url;
   const t = s.name.toLowerCase();
   return (SVC_PHOTO.find(([re]) => re.test(t)) || [, REAL("low-fade")])[1];
@@ -464,7 +474,7 @@ export function viewService(id) {
 /* ===================== SELECTOR SEMANAL DE HORARIOS =====================
    Muestra los 7 días de la semana, permite ir a semanas anteriores/posteriores
    y volver a la actual. Los horarios salen de get_availability (servidor). */
-export function mountSlotPicker(el, { serviceId, barberId = null, date = null, selected = null, chain = [], onPick }) {
+export function mountSlotPicker(el, { serviceId, barberId = null, date = null, selected = null, onPick }) {
   const today = todayYmd();
   const st = { week: mondayOf(date || today), day: date || null, slots: [], loading: true, error: null, seq: 0 };
 
@@ -475,10 +485,7 @@ export function mountSlotPicker(el, { serviceId, barberId = null, date = null, s
     if (seq !== st.seq) return;
     st.loading = false;
     if (error) { st.error = friendly(error); st.slots = []; }
-    else {
-      const has = new Set(data.map((s) => `${s.barber_id}|${new Date(s.slot_start).getTime()}`));
-      st.slots = data.filter((s) => chain.every((ms) => has.has(`${s.barber_id}|${new Date(s.slot_start).getTime() + ms}`)));
-    }
+    else st.slots = data;
     const days = byDay();
     if (!st.day || st.day < st.week || st.day > addDays(st.week, 6) || !days[st.day]?.length) {
       st.day = Object.keys(days).sort().find((d) => days[d].length) || (today >= st.week && today <= addDays(st.week, 6) ? today : st.week);
@@ -584,7 +591,7 @@ export function mountBooking() {
   function render() {
     const b = validState();
     const svcs = cartSvcs(b), svc = svcs[0];
-    const svcName = svcs.map((s) => s.name).join(" + "), svcMin = svcs.reduce((t, s) => t + s.duration_min, 0);
+    const svcName = svcs.map((s) => s.name).join(" + "), svcMin = Math.max(0, ...svcs.map((s) => s.duration_min));   // toda la visita, no por servicio
     const total = svcs.reduce((t, s) => t + Number(s.price || 0), 0) + extrasSum(b.extras);
     const barber = activeBarbers().find((x) => x.id === b.barberId);
     const services = activeServices();
@@ -649,10 +656,9 @@ export function mountBooking() {
       <span class="book-bar__step">Paso ${cur} de 4</span>` : "";
 
     if (cur === 3) mountSlotPicker($("#picker"), {
-      serviceId: svc.id, barberId: b.barberId === "any" ? null : b.barberId,
+      serviceId: svcs.find((s) => s.duration_min === svcMin).id, barberId: b.barberId === "any" ? null : b.barberId,
       date: b.start ? ymd(new Date(b.start)) : null, selected: b.start,
-      chain: svcs.slice(0, -1).map((_, i) => svcs.slice(0, i + 1).reduce((t, s) => t + s.duration_min, 0) * 60000),
-      onPick: ({ start, slotBarber }) => { Booking.set({ start, slotBarber }); go(null); }
+      onPick: ({ start }) => { Booking.set({ start }); go(null); }
     });
   }
 
@@ -670,6 +676,9 @@ export function mountBooking() {
       <label class="field"><span>Nota para el barbero (opcional)</span>
         <textarea name="notes" maxlength="500" rows="2" placeholder="Ej.: quiero mantener el largo arriba">${esc(b.notes || "")}</textarea></label>
       ${extrasPromo(b.extras || {})}
+      <fieldset class="pay"><legend>¿Cómo vas a pagar?</legend>
+        <div class="pay__opts">${PAY.map(([v, ic]) => `<label class="pay__opt"><input type="radio" name="pay" value="${v}" ${b.pay === v ? "checked" : ""}><svg viewBox="0 0 24 24" aria-hidden="true">${ic}</svg><span>${v}</span></label>`).join("")}</div>
+        <small class="muted">Pagas en la barbería al terminar tu servicio.</small></fieldset>
       <p class="muted small">${guest ? "Reservas como invitado." : `Cuenta: <strong>${esc(State.user.email)}</strong>.`} El pago se hace en la barbería.</p>
       ${consentChecks()}
       <button class="btn btn--lg btn--block" type="submit" data-busy="Confirmando…">Confirmar cita</button>
@@ -696,18 +705,22 @@ export function mountBooking() {
     const bb = e.target.closest("[data-barber]");
     if (bb) { Booking.set({ barberId: bb.dataset.barber, start: null }); return go(null); }
   });
-  steps.addEventListener("input", (e) => { if (e.target.name === "notes") Booking.set({ notes: e.target.value }); });
+  steps.addEventListener("input", (e) => { if (e.target.name === "notes") Booking.set({ notes: e.target.value }); if (e.target.name === "pay") Booking.set({ pay: e.target.value }); });
   steps.addEventListener("submit", async (e) => {
     e.preventDefault();
     const b = Booking.get(), f = formData(e.target);
     if (f.full_name.trim().length < 2) return setMsg($("#confirmMsg"), "Escribe tu nombre completo.");
     if (f.phone.replace(/\D/g, "").length < 7) return setMsg($("#confirmMsg"), "Escribe un celular válido para contactarte.");
     if (!State.user && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) return setMsg($("#confirmMsg"), friendly({ message: "CORREO_INVALIDO" }));
+    if (!f.pay) return setMsg($("#confirmMsg"), "Elige cómo vas a pagar.");
     if (consentMissing(f)) return setMsg($("#confirmMsg"), consentMissing(f));
     const ids = cartSvcs(b).map((s) => s.id);
     const extras = SHOP_ITEMS.filter(([n]) => b.extras?.[n]).map(([n, p]) => ({ n, q: b.extras[n], p }));
-    const args = { p_services: ids, p_barber: b.barberId !== "any" ? b.barberId : ids.length > 1 ? b.slotBarber : null,
-      p_start: b.start, p_notes: b.notes || null, p_extras: extras.length ? extras : null };
+    const args = { p_services: ids, p_barber: b.barberId !== "any" ? b.barberId : null,
+      p_start: b.start, p_notes: b.notes || null, p_extras: extras.length ? extras : null, p_payment: f.pay };
+    // La ventana de WhatsApp se abre aquí, durante el clic: después de esperar al servidor el navegador la bloquearía.
+    const win = waLink() ? window.open("", "_blank") : null;
+    let booked = false;
     await busy(e.submitter || $("#confirmForm button"), async () => {
       if (!State.user) {   // invitado: sin cuenta, con correo para la confirmación y el recordatorio
         try { await logConsent("reserva", f.email.trim(), f.full_name.trim()); } catch (ce) { return setMsg($("#confirmMsg"), friendly(ce)); }
@@ -715,9 +728,11 @@ export function mountBooking() {
         if (error) return failed(error);
         sb.functions.invoke("notificaciones").catch(() => {});
         const svcs = cartSvcs(b);
+        const row = [{ client_name: f.full_name.trim(), client_phone: f.phone.trim(), services: svcs.map((s) => ({ n: s.name, p: s.price })), price: svcs.every((s) => s.price != null) ? svcs.reduce((t, s) => t + Number(s.price), 0) : null,
+          starts_at: data.starts_at, ends_at: data.ends_at, barber_name: data.barber, status: data.status, extras: extras.length ? extras : null, payment_method: f.pay }];
+        booked = true; sendToWa(win, row);
         Booking.clear(); refreshCart();
-        steps.closest(".book").outerHTML = doneHtml(svcs.map((s) => ({ service_name: s.name, price: s.price, starts_at: data.starts_at, ends_at: data.ends_at,
-          barber_name: data.barber, status: data.status, extras: extras.length ? extras : null })), f.email.trim());
+        steps.closest(".book").outerHTML = doneHtml(row, f.email.trim());
         return scrollTo(0, 0);
       }
       const { error: pe } = await sb.from("profiles").update({ full_name: f.full_name.trim(), phone: f.phone.trim() }).eq("id", State.user.id);
@@ -727,9 +742,12 @@ export function mountBooking() {
       const { data, error } = await sb.rpc("book_cart", args);
       if (error) return failed(error);
       sb.functions.invoke("notificaciones").catch(() => {});   // correo de confirmación ya; si falla, lo manda la tarea programada
+      const { data: row } = await sb.from("appointments").select("*").eq("id", data[0]).single();
+      booked = true; if (row) sendToWa(win, [row]); else win?.close();
       Booking.clear();
       location.hash = `#/reserva/${data.join(",")}`;
     });
+    if (!booked) win?.close();
   });
   function failed(error) {
     setMsg($("#confirmMsg"), friendly(error));
@@ -737,6 +755,25 @@ export function mountBooking() {
   }
   render();
 }
+
+const PAY = [["Efectivo", '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/>'], ["Nequi", '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>'],
+  ["Transferencia", '<path d="M4 8h15l-4-4M20 16H5l4 4"/>'], ["Tarjeta", '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>']];
+const svcLines = (a) => a.services?.length ? a.services : [{ n: a.service_name, p: a.price }];
+
+const waDigits = () => { const d = String(N().telefono || "").replace(/\D/g, ""); return d.length === 10 ? "57" + d : d; };
+function waMessage(list) {
+  const a = list[0], total = list.every((x) => x.price != null) ? list.reduce((t, x) => t + Number(x.price), 0) + extrasTotal(a.extras) : null;
+  return ["Hola, acabo de reservar en la web:", `Nombre: ${a.client_name}`, a.client_phone && `Celular: ${a.client_phone}`,
+    `Fecha: ${cap(fmtDate(a.starts_at))}`, `Hora: ${fmtTime(a.starts_at)} – ${fmtTime(list.at(-1).ends_at)}`, `Servicios: ${list.flatMap(svcLines).map((x) => x.n).join(", ")}`,
+    `Barbero: ${a.barber_name}`, a.extras?.length && `Adicionales: ${extrasText(a.extras)}`, a.payment_method && `Pago: ${a.payment_method}`, total != null && `Total: ${money(total)}`].filter(Boolean).join("\n");
+}
+// WhatsApp solo deja el mensaje escrito con un número; los enlaces wa.me/message no aceptan texto, y entonces se copia para pegarlo.
+const waBookingUrl = (list) => waDigits() ? `https://wa.me/${waDigits()}?text=${encodeURIComponent(waMessage(list))}` : waLink();
+function sendToWa(win, list) {
+  if (!waDigits()) navigator.clipboard?.writeText(waMessage(list)).catch(() => {});
+  if (win) win.location.href = waBookingUrl(list);
+}
+document.addEventListener("click", (e) => { const c = e.target.closest("[data-wa-copy]"); if (c) navigator.clipboard?.writeText(c.dataset.waCopy).catch(() => {}); });
 
 /* Confirmación visual después de reservar (lee la cita real desde Supabase). */
 export async function viewBooked(id) {
@@ -747,7 +784,7 @@ export async function viewBooked(id) {
 }
 // guestEmail: reserva de invitado (no puede leer sus citas; se muestra lo que devolvió la reserva).
 function doneHtml(list, guestEmail) {
-  const a = list[0], last = list.at(-1), wa = waLink();
+  const a = list[0], last = list.at(-1), wa = waBookingUrl(list), lines = list.flatMap(svcLines);
   const pend = a.status === "pendiente";
   return `<section class="wrap done">
     <div class="done__head"><p class="label">${pend ? "Reserva recibida" : "Cita confirmada"}</p>
@@ -756,16 +793,18 @@ function doneHtml(list, guestEmail) {
       <div class="done__date"><span>${esc(cap(fmtDay(ymd(new Date(a.starts_at)), { weekday: "long" })))}</span><strong>${+ymd(new Date(a.starts_at)).slice(8)}</strong><span>${esc(fmtDay(ymd(new Date(a.starts_at)), { month: "long", year: "numeric" }))}</span></div>
       <dl class="sum">
         <div><dt>Hora</dt><dd>${fmtTime(a.starts_at)} – ${fmtTime(last.ends_at)}</dd></div>
-        <div><dt>Servicio${list.length > 1 ? "s" : ""}</dt><dd>${list.map((x) => `${esc(x.service_name)} · ${priceLabel(x.price)}`).join("<br>")}</dd></div>
+        <div><dt>Servicio${lines.length > 1 ? "s" : ""}</dt><dd>${lines.map((x) => `${esc(x.n)} · ${priceLabel(x.p)}`).join("<br>")}</dd></div>
         <div><dt>Barbero</dt><dd>${esc(a.barber_name)}</dd></div>
         ${a.extras?.length ? `<div><dt>Adicionales</dt><dd>${esc(extrasText(a.extras))} · ${money(extrasTotal(a.extras))}</dd></div>` : ""}
         ${list.every((x) => x.price != null) ? `<div class="sum__total"><dt>Total a pagar en la barbería</dt><dd>${money(list.reduce((t, x) => t + Number(x.price), 0) + extrasTotal(a.extras))}</dd></div>` : ""}
+        ${a.payment_method ? `<div><dt>Método de pago</dt><dd>${esc(a.payment_method)} · en la barbería</dd></div>` : ""}
         ${N().direccion ? `<div><dt>Lugar</dt><dd>${esc(N().direccion)}</dd></div>` : ""}
       </dl>
     </div>
     ${pend ? `<p class="muted">La barbería confirmará tu cita pronto.${a.pending_expires_at ? ` Si no se confirma antes de ${esc(fmtDateTime2(a.pending_expires_at))}, el horario se libera.` : ""}</p>` : ""}
     ${guestEmail ? `<p class="muted">Te enviamos la confirmación a <strong>${esc(guestEmail)}</strong> y un recordatorio 2 horas antes. Para cambiar o cancelar, escríbenos${wa ? " por WhatsApp" : ""}.</p>` : ""}
-    <div class="row">${guestEmail ? (wa ? `<a class="btn" href="${esc(wa)}" target="_blank" rel="noopener">Escribir por WhatsApp</a>` : "") : `<a class="btn" href="#/cuenta">Ver mis citas</a>`}<a class="btn btn--ghost" href="#/">Volver al inicio</a></div>
+    ${wa ? `<p class="muted">${waDigits() ? "Abrimos WhatsApp con tu reserva escrita: solo toca enviar. Si no se abrió, usa este botón." : "Abrimos WhatsApp y copiamos tu reserva: pégala en el chat y envíala. Si no se abrió, usa este botón."}</p>` : ""}
+    <div class="row">${wa ? `<a class="btn" href="${esc(wa)}" target="_blank" rel="noopener" ${waDigits() ? "" : `data-wa-copy="${esc(waMessage(list))}"`}>Enviar mi reserva por WhatsApp</a>` : ""}${guestEmail ? "" : `<a class="btn btn--ghost" href="#/cuenta">Ver mis citas</a>`}<a class="btn btn--ghost" href="#/">Volver al inicio</a></div>
   </section>`;
 }
 const fmtDateTime2 = (d) => d ? `${fmtDate(d)} ${fmtTime(d)}` : "";
