@@ -353,4 +353,23 @@ await as(U.admin, `select admin_set_status($1, 'cancelada')`, [c11]);
 await fails(as(U.admin, `select admin_set_status($1, 'confirmada')`, [c11]), "TRANSICION_INVALIDA");
 ok("estados: 'no vino' quita el ingreso y se puede corregir; una cancelada no vuelve");
 
+console.log("Migración 12 (eliminar citas cerradas)");
+const m12 = readFileSync(new URL("../supabase/12_eliminar_citas.sql", import.meta.url), "utf8");
+await db.exec(m12); await db.exec(m12);
+const st12 = `${d3}T17:00:00-05:00`;
+const [{ book_cart: [c12] }] = await as(U.beto, `select book_cart($1::uuid[], $2, $3)`, [[barba.id], b1.id, st12]);
+await fails(as(U.admin, `select admin_delete_appointment($1)`, [c12]), "SOLO_CANCELADAS");
+await as(U.admin, `select admin_set_status($1, 'en_proceso')`, [c12]);
+await fails(as(U.admin, `select admin_delete_appointment($1)`, [c12]), "SOLO_CANCELADAS");
+await as(U.admin, `select admin_set_status($1, 'completada')`, [c12]);
+const [mano] = await as(U.admin, `insert into finance_entries(kind, description, category, amount, entry_date, appointment_id) values ('ingreso','Propina','Otros',1000,current_date,$1) returning id`, [c12]);
+const [auto12] = await as(U.admin, `select id from finance_entries where appointment_id = $1 and auto`, [c12]);
+assert.ok(auto12);
+await fails(as(U.ana, `select admin_delete_appointment($1)`, [c12]), "NO_AUTORIZADO");
+await as(U.admin, `select admin_delete_appointment($1)`, [c12]);
+assert.equal((await db.query(`select id from appointments where id = $1`, [c12])).rows.length, 0);
+assert.equal((await db.query(`select id from finance_entries where id = $1`, [auto12.id])).rows.length, 0);
+assert.equal((await db.query(`select appointment_id from finance_entries where id = $1`, [mano.id])).rows[0].appointment_id, null);
+ok("eliminar: completada se borra con su ingreso automático; una activa no; el ingreso manual se conserva");
+
 console.log(`\n${passed} pruebas OK`);

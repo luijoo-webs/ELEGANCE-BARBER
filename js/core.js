@@ -1,6 +1,6 @@
 /* Núcleo compartido: conexión, estado, utilidades de fecha (America/Bogota), errores y UI básica. */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js?v=20261103d";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js?v=20261103e";
 
 export const CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 export const sb = CONFIGURED
@@ -97,7 +97,7 @@ const ERRORS = {
   CELULAR_INVALIDO: "Escribe un celular válido para contactarte.",
   CORREO_INVALIDO: "Escribe un correo válido: ahí te llega la confirmación y el recordatorio.",
   NO_AUTORIZADO: "No tienes permisos para esta acción.",
-  SOLO_CANCELADAS: "Solo se pueden eliminar citas canceladas.",
+  SOLO_CANCELADAS: "Solo se pueden eliminar citas canceladas, completadas o de quien no vino.",
   CITA_NO_ENCONTRADA: "La cita ya no existe.",
   SERVICIO_NO_DISPONIBLE: "Ese servicio ya no está disponible.",
   ANTICIPACION_MINIMA: "Esa hora ya no cumple la anticipación mínima para reservar. Elige otra.",

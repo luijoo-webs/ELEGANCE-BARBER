@@ -3,8 +3,8 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday, ymd, toIso, hhmm,
   fmtTime, fmtDate, fmtDay, fmtDateTime, minutes, fromMinutes, shortTime, STATUS, statusBadge, friendly, toast, loader, emptyState,
   formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin, extrasText, extrasTotal
-} from "./core.js?v=20261103d";
-import { SHOP, svcPhoto } from "./public.js?v=20261103d";
+} from "./core.js?v=20261103e";
+import { SHOP, svcPhoto } from "./public.js?v=20261103e";
 
 const SECTIONS = [
   ["resumen", "Resumen"], ["agenda", "Agenda"], ["ventas", "Ventas"], ["citas", "Citas"], ["servicios", "Servicios"], ["barberos", "Barberos"],
@@ -409,14 +409,14 @@ async function apptDetail(id) {
     <div class="row" style="margin:18px 0">
       ${stepActions(a, "data-st")}
       ${active ? `<button class="btn btn--sm btn--ghost" data-edit>Reprogramar / editar</button><button class="btn btn--sm btn--ghost btn--danger-text" data-st="cancelada">Cancelar cita</button>` : ""}
-      ${a.status === "cancelada" ? `<button class="btn btn--sm btn--ghost btn--danger-text" data-del>Eliminar definitivamente</button>` : ""}
+      ${["cancelada", "completada", "no_asistio"].includes(a.status) ? `<button class="btn btn--sm btn--ghost btn--danger-text" data-del>Eliminar definitivamente</button>` : ""}
     </div>
     <form class="form" id="notesForm"><label class="field"><span>Notas internas</span><textarea name="notes" rows="2" maxlength="2000">${esc(a.admin_notes || "")}</textarea></label>
       <button class="btn btn--sm btn--ghost" type="submit">Guardar nota</button></form>`, { wide: true });
   m.el.addEventListener("click", async (e) => {
     if (e.target.closest("[data-edit]")) { m.close(); return apptEditor({ appt: a }); }
     if (e.target.closest("[data-del]")) {
-      if (!(await confirmDialog(`¿Eliminar definitivamente la cita cancelada de ${a.client_name || "este cliente"} (${fmtDate(a.starts_at)} ${fmtTime(a.starts_at)})? No se puede deshacer.`, "Eliminar cita", true))) return;
+      if (!(await confirmDialog(`¿Eliminar definitivamente la cita de ${a.client_name || "este cliente"} (${fmtDate(a.starts_at)} ${fmtTime(a.starts_at)})?${a.status === "completada" ? " También se quita de finanzas y estadísticas lo que sumó." : ""} No se puede deshacer.`, "Eliminar cita", true))) return;
       const { error } = await sb.rpc("admin_delete_appointment", { p_id: a.id });
       if (error) return toast(friendly(error), "err");
       m.close(); toast("Cita eliminada."); return refresh();
