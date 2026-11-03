@@ -796,3 +796,43 @@ td .muted { font-size: .8rem; }
 .sale__row > span { flex: 1; }
 .sale__row input[type=number] { width: 110px; }
 .sale__total { font-size: 1.2rem; margin: 6px 0; }
+
+/* Empaque recortado: solo el panel blanco de la foto (800×960, panel en x 150–650, y 380–925) */
+.pk { position: relative; display: block; overflow: hidden; aspect-ratio: 500 / 545; background: #fff; }
+.pk img { position: absolute; width: 160%; max-width: none; height: auto; left: -30%; top: 0; margin-top: -76%; }
+.pdp__img--pk { aspect-ratio: auto; background: #fff; border-radius: 4px; }
+.pdp__qty { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+/* Carrito con fotos */
+.cart__pic { width: 56px; height: 60px; flex: none; border-radius: 8px; overflow: hidden; display: block; background: #fff; }
+.cart__pic > img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cart__pic .pk { width: 100%; height: 100%; aspect-ratio: auto; }
+.cart__list .extras__name a { color: inherit; text-decoration: none; font-weight: 600; }
+.cart__list .extras__name a:hover { text-decoration: underline; }
+/* Invitación a snacks y bebidas */
+.xpromo { width: 100%; display: flex; align-items: center; gap: 14px; text-align: left; cursor: pointer; border: 0; border-radius: 14px; padding: 14px 16px; color: #f5f2ed; font: inherit;
+  background: radial-gradient(120% 140% at 0% 0%, #3a3121 0%, #141312 60%); box-shadow: 0 10px 24px rgba(20,19,18,.18); transition: transform .2s, box-shadow .2s; }
+.xpromo:hover { transform: translateY(-2px); box-shadow: 0 16px 30px rgba(20,19,18,.25); }
+.xpromo__pics { display: flex; flex: none; }
+.xpromo__pics .pk { width: 42px; border-radius: 8px; border: 2px solid #141312; margin-left: -14px; transition: transform .2s; }
+.xpromo__pics .pk:first-child { margin-left: 0; }
+.xpromo:hover .xpromo__pics .pk:nth-child(odd) { transform: translateY(-4px) rotate(-4deg); }
+.xpromo:hover .xpromo__pics .pk:nth-child(even) { transform: translateY(3px) rotate(4deg); }
+.xpromo__txt { flex: 1; display: grid; gap: 2px; min-width: 0; }
+.xpromo__txt b { font-size: 1rem; }
+.xpromo__txt small { color: rgba(245,242,237,.7); line-height: 1.3; }
+.xpromo__cta { flex: none; font: 700 .7rem var(--sans); letter-spacing: .12em; text-transform: uppercase; color: #141312; background: #d9b25f; border-radius: 999px; padding: 8px 12px; white-space: nowrap; }
+.xpromo.is-in { background: radial-gradient(120% 140% at 0% 0%, #2f3a24 0%, #141312 60%); }
+.xpromo--sm { padding: 10px 12px; box-shadow: none; }
+@media (max-width: 560px) { .xpromo { flex-wrap: wrap; } .xpromo__cta { width: 100%; text-align: center; } .xpromo--sm .xpromo__cta { width: auto; } }
+/* Tienda en ventana */
+.shop__search { width: 100%; padding: 12px 14px 12px 40px; border: 1px solid var(--line-2); border-radius: 999px; font: inherit; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' fill='none' stroke='%236b665f' stroke-width='2'%3E%3Ccircle cx='8' cy='8' r='6'/%3E%3Cpath d='m13 13 4 4'/%3E%3C/svg%3E") 14px 50% no-repeat; }
+.shop__chips { margin: 12px 0; }
+.shop__grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.shop__grid li { display: grid; gap: 4px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg, #f5f2ed); transition: border-color .2s, box-shadow .2s; }
+.shop__grid li.is-in { border-color: #d9b25f; box-shadow: 0 0 0 2px rgba(217,178,95,.35); }
+.shop__grid li[hidden] { display: none; }
+.shop__grid .pk { border-radius: 8px; }
+.shop__name { font-size: .88rem; font-weight: 600; line-height: 1.25; min-height: 2.5em; }
+.shop__price { font-size: .85rem; color: var(--muted, #6b665f); }
+.shop__grid .qty { justify-content: space-between; }
+.shop__foot { position: sticky; bottom: -28px; margin: 16px -28px -28px; padding: 14px 28px; display: flex; justify-content: space-between; align-items: center; gap: 12px; background: var(--bg-2); border-top: 1px solid var(--line); }

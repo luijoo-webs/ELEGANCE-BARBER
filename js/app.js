@@ -1,8 +1,8 @@
 /* Arranque y enrutador (#/ruta). Las rutas privadas se validan aquí y, sobre todo, en RLS. */
-import { CONFIGURED, sb, State, $, esc, safeUrl, loader, emptyState, friendly, loadPublic, loadProfile, isAdmin, waLink, cookieChoice, setCookieChoice } from "./core.js?v=20261102g";
-import { viewLegal } from "./legal.js?v=20261102g";
-import { viewHome, mountHome, viewBooking, mountBooking, viewBooked, cartCount, viewService } from "./public.js?v=20261102g";
-import { viewAccount, processAuthLink, Recovery } from "./account.js?v=20261102g";
+import { CONFIGURED, sb, State, $, esc, safeUrl, loader, emptyState, friendly, loadPublic, loadProfile, isAdmin, waLink, cookieChoice, setCookieChoice } from "./core.js?v=20261102h";
+import { viewLegal } from "./legal.js?v=20261102h";
+import { viewHome, mountHome, viewBooking, mountBooking, viewBooked, cartCount, viewService, viewProduct } from "./public.js?v=20261102h";
+import { viewAccount, processAuthLink, Recovery } from "./account.js?v=20261102h";
 
 const app = $("#app");
 let seq = 0;
@@ -108,10 +108,11 @@ async function render() {
     if (route === "admin") {
       if (!State.user) { location.hash = "#/cuenta?volver=admin"; return; }
       if (!isAdmin()) html = `<section class="wrap narrow">${emptyState("No tienes permisos de administrador.", "Esta sección es solo para el equipo de la barbería.", `<a class="btn" href="#/">Ir al inicio</a>`)}</section>`;
-      else { const inPanel = $(".adm"); if (inPanel) inPanel.classList.add("is-busy"); else app.innerHTML = loader("Cargando panel…"); const Admin = await import("./admin.js?v=20261102g"); if (my !== seq) return; ({ html, mount } = await Admin.view(a || "resumen", b, query)); }
+      else { const inPanel = $(".adm"); if (inPanel) inPanel.classList.add("is-busy"); else app.innerHTML = loader("Cargando panel…"); const Admin = await import("./admin.js?v=20261102h"); if (my !== seq) return; ({ html, mount } = await Admin.view(a || "resumen", b, query)); }
     } else if (route === "" || route === "inicio") { html = viewHome(); mount = mountHome; }
     else if (route === "legal") html = viewLegal(a);
     else if (route === "servicio" && a) html = viewService(a);
+    else if (route === "producto" && a) html = viewProduct(a);
     else if (route === "reservar") { html = viewBooking(query); mount = mountBooking; }
     else if (route === "reserva" && a) { app.innerHTML = header() + loader(); html = State.user ? await viewBooked(a) : ""; if (!State.user) { location.hash = "#/cuenta"; return; } }
     else if (route === "cuenta") {

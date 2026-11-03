@@ -2,8 +2,8 @@
 import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday,
   fmtDay, fmtTime, fmtDate, hhmm, ymd, friendly, toast, loader, emptyState, busy, scheduleByDay, barberWorkDays, waLink, setMsg,
-  mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal
-} from "./core.js?v=20261102g";
+  mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal, modal
+} from "./core.js?v=20261102h";
 
 const N = () => State.settings.negocio || {};
 const R = () => State.settings.reservas || {};
@@ -120,9 +120,7 @@ export function viewHome() {
       ${head("Para después del corte", "t-shop", "")}
       <p class="muted rv" style="margin:-8px 0 22px">Snacks y bebidas para disfrutar en la barbería. Se pagan allá, junto con tu servicio.</p>
       <div class="chips rv" role="group" aria-label="Filtrar productos"><button type="button" class="chip is-on" data-cat-filter="" aria-pressed="true">Todos</button>${Object.keys(SHOP).map((c) => `<button type="button" class="chip" data-cat-filter="${c}" aria-pressed="false">${c}</button>`).join("")}</div>
-      <ul class="catalog">${Object.entries(SHOP).flatMap(([cat, items]) => items.map(([name, price, img]) => [cat, name, price, img])).map(([cat, name, price, img], k) => `<li class="rv" style="--i:${k % 4}" data-cat="${cat}"><div class="cat-card cat-card--shop">
-        <figure class="cat-card__img"><img src="assets/tienda/${img}.jpg?v=2" alt="${esc(name)}" loading="lazy"><span class="cat-card__tag">${cat}</span></figure>
-        <div class="cat-card__body"><h4>${esc(name)}</h4><div class="cat-card__foot"><span class="cat-card__price">${money(price)}</span><button type="button" class="cart-add" data-cart-x="${esc(name)}" aria-label="Agregar ${esc(name)} al carrito">+ Agregar</button></div></div></div></li>`).join("")}</ul>
+      <ul class="catalog">${SHOP_LIST.map(shopCard).join("")}</ul>
     </div>
   </section>
 
@@ -229,6 +227,93 @@ const SHOP = {
 };
 
 export const SHOP_ITEMS = Object.values(SHOP).flat();
+const SHOP_LIST = Object.entries(SHOP).flatMap(([c, l]) => l.map(([n, p, img]) => ({ n, p, img, c })));
+const pkImg = (img, alt = "") => `<span class="pk"><img src="assets/tienda/${img}.jpg?v=2" alt="${esc(alt)}" loading="lazy"></span>`;   // solo el panel blanco con el empaque
+const fold = (t) => t.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+function shopCard(x, k = 0) {
+  return `<li class="rv" style="--i:${k % 4}" data-cat="${x.c}"><div class="cat-card cat-card--shop">
+    <a class="cat-card__img" href="#/producto/${x.img}" tabindex="-1" aria-hidden="true"><img src="assets/tienda/${x.img}.jpg?v=2" alt="" loading="lazy"><span class="cat-card__tag">${x.c}</span></a>
+    <div class="cat-card__body"><h4><a href="#/producto/${x.img}">${esc(x.n)}</a></h4><div class="cat-card__foot"><span class="cat-card__price">${money(x.p)}</span><button type="button" class="cart-add" data-cart-x="${esc(x.n)}" aria-label="Agregar ${esc(x.n)} al carrito">+ Agregar</button></div></div></div></li>`;
+}
+
+/* Página de un producto (snack o bebida), estilo tienda. */
+export function viewProduct(slug) {
+  const x = SHOP_LIST.find((i) => i.img === slug);
+  if (!x) return `<section class="wrap narrow">${emptyState("Este producto no está disponible.", "", `<a class="btn" href="#/inicio/tienda">Ver productos</a>`)}</section>`;
+  const q = Booking.get().extras?.[x.n] || 0, wa = waLink();
+  const others = SHOP_LIST.filter((i) => i.c === x.c && i.img !== x.img).slice(0, 4);
+  return `<section class="wrap pdp">
+    <nav class="pdp__crumbs" aria-label="Ruta"><a href="#/">Inicio</a> / <a href="#/inicio/tienda">Snacks y bebidas</a> / <span>${esc(x.c)}</span></nav>
+    <div class="pdp__grid">
+      <figure class="pdp__img pdp__img--pk">${pkImg(x.img, x.n)}</figure>
+      <div class="pdp__info">
+        <p class="label">${esc(x.c)}</p>
+        <h1>${esc(x.n)}</h1>
+        <p class="pdp__price">${money(x.p)}</p>
+        <p class="muted small">Precios en COP · Te lo entregamos en tu cita · Se paga en la barbería</p>
+        <div class="pdp__qty"><span>En tu carrito</span><span class="qty"><button type="button" data-cx="${esc(x.n)}" data-d="-1" aria-label="Quitar uno">−</button><b data-cxn="${esc(x.n)}">${q}</b><button type="button" data-cx="${esc(x.n)}" data-d="1" aria-label="Agregar uno">+</button></span></div>
+        <div class="pdp__acts">
+          <button type="button" class="btn btn--lg btn--block" data-cart-x="${esc(x.n)}">Agregar al carrito</button>
+          <a class="btn btn--lg btn--block btn--ghost" href="#/reservar">Reservar mi cita</a>
+          ${wa ? `<a class="btn btn--block btn--ghost" href="${esc(wa)}" target="_blank" rel="noopener">Preguntar por WhatsApp</a>` : ""}
+        </div>
+        <details class="pdp__more" open><summary>Detalles</summary><ul>
+          <li>Categoría: ${esc(x.c)}</li>
+          <li>Lo pides junto con tu reserva y te lo entregamos en la barbería.</li>
+          <li>Pagas en la barbería, junto con tu servicio.</li>
+          <li>Hasta 10 unidades por producto.</li>
+          ${x.c === "Cervezas" ? "<li>Venta solo a mayores de edad.</li>" : ""}
+        </ul></details>
+      </div>
+    </div>
+    ${others.length ? `<h2 class="pdp__rel">Más ${esc(x.c.toLowerCase())}</h2><ul class="catalog">${others.map(shopCard).join("")}</ul>` : ""}
+  </section>`;
+}
+
+/* Tienda en ventana: buscador, categorías y cantidades. onClose: para que la reserva actualice su total. */
+function openShop(onClose) {
+  const ex = Booking.get().extras || {};
+  const m = modal(`<h2 class="modal__t">Snacks y bebidas</h2>
+    <p class="muted small" style="margin:-8px 0 14px">Te los entregamos en tu cita y se pagan en la barbería.</p>
+    <input type="search" class="shop__search" placeholder="Buscar: Coronita, Doritos, agua…" aria-label="Buscar producto">
+    <div class="chips shop__chips" role="group" aria-label="Categorías"><button type="button" class="chip is-on" data-sc="">Todos</button>${Object.keys(SHOP).map((c) => `<button type="button" class="chip" data-sc="${c}">${c}</button>`).join("")}</div>
+    <ul class="shop__grid">${SHOP_LIST.map((x) => `<li data-c="${x.c}" data-f="${esc(fold(x.n + " " + x.c))}" class="${ex[x.n] ? "is-in" : ""}">
+      <a href="#/producto/${x.img}" data-close>${pkImg(x.img)}</a>
+      <span class="shop__name">${esc(x.n)}</span><span class="shop__price">${money(x.p)}</span>
+      <span class="qty"><button type="button" data-sx="${esc(x.n)}" data-d="-1" aria-label="Quitar ${esc(x.n)}" ${ex[x.n] ? "" : "disabled"}>−</button><b>${ex[x.n] || 0}</b><button type="button" data-sx="${esc(x.n)}" data-d="1" aria-label="Agregar ${esc(x.n)}">+</button></span></li>`).join("")}</ul>
+    <p class="muted shop__none" hidden>No encontramos ese producto.</p>
+    <div class="shop__foot"><span id="shopSum"></span><button type="button" class="btn" data-close>Listo</button></div>`, { wide: true, onClose: () => { refreshCart(); onClose?.(); } });
+  const el = m.el, sum = () => { const e = Booking.get().extras || {}, n = Object.values(e).reduce((t, v) => t + v, 0); $("#shopSum", el).innerHTML = n ? `${n} producto${n > 1 ? "s" : ""} · <strong>${money(extrasSum(e))}</strong>` : "Elige lo que quieras"; };
+  let cat = "";
+  const filter = () => {
+    const t = fold($(".shop__search", el).value.trim());
+    let shown = 0;
+    $$(".shop__grid li", el).forEach((li) => { li.hidden = (cat && li.dataset.c !== cat) || (t && !li.dataset.f.includes(t)); if (!li.hidden) shown++; });
+    $(".shop__none", el).hidden = !!shown;
+  };
+  $(".shop__search", el).addEventListener("input", filter);
+  el.addEventListener("click", (e) => {
+    const c = e.target.closest("[data-sc]");
+    if (c) { cat = c.dataset.sc; $$("[data-sc]", el).forEach((b) => b.classList.toggle("is-on", b === c)); return filter(); }
+    const b = e.target.closest("[data-sx]");
+    if (!b) return;
+    const n = b.dataset.sx, li = b.closest("li"), q = addExtra(n, +b.dataset.d)[n] || 0;
+    $("b", li).textContent = q; $("[data-d='-1']", li).disabled = !q; li.classList.toggle("is-in", !!q);
+    refreshCart(); sum();
+  });
+  sum();
+}
+
+// Invitación a la tienda dentro de la reserva.
+function extrasPromo(ex = {}) {
+  const n = Object.values(ex).reduce((t, v) => t + v, 0);
+  return `<button type="button" class="xpromo${n ? " is-in" : ""}" id="exPromo" data-shop-open>
+    <span class="xpromo__pics" aria-hidden="true">${["coronita", "doritos", "coca-cola", "detodito", "club-colombia"].map((i) => pkImg(i)).join("")}</span>
+    <span class="xpromo__txt"><b>${n ? "Tus adicionales" : "¿Antojo para después del corte?"}</b>
+      <small>${n ? esc(SHOP_ITEMS.filter(([k]) => ex[k]).map(([k]) => `${ex[k]}× ${k}`).join(", ")) : "Cervezas, gaseosas y snacks listos en tu cita"}</small></span>
+    <span class="xpromo__cta">${n ? `${money(extrasSum(ex))} · Cambiar` : "Ver productos"} →</span>
+  </button>`;
+}
 const MAX_SVC = () => 10;   // servicios por visita (book_cart acepta hasta 10)
 const cartSvcs = (b = Booking.get()) => (b.serviceIds || []).map((id) => activeServices().find((s) => s.id === id)).filter(Boolean);
 const extrasSum = (ex = {}) => SHOP_ITEMS.reduce((t, [n, p]) => t + (ex[n] || 0) * p, 0);
@@ -254,10 +339,11 @@ function cartHtml() {
   const total = svcs.reduce((t, s) => t + Number(s.price || 0), 0) + extrasSum(ex);
   if (!svcs.length && !snacks.length) return `<p class="muted cart__empty">Tu carrito está vacío.</p><a class="btn btn--block" href="#/inicio/servicios" data-cart-close>Ver servicios</a>`;
   return `<ul class="cart__list">
-    ${svcs.map((s) => `<li><span class="extras__name">${esc(s.name)}<small>${durLabel(s.duration_min)} · ${priceLabel(s.price)}</small></span><button type="button" class="cart__rm" data-cart-rm="${s.id}" aria-label="Quitar ${esc(s.name)}">×</button></li>`).join("")}
-    ${snacks.map(([n, p, img]) => `<li><span class="extras__pic"><img src="assets/tienda/${img}.jpg?v=2" alt=""></span><span class="extras__name">${esc(n)}<small>${money(p)}</small></span>
+    ${svcs.map((s) => `<li><a class="cart__pic" href="#/servicio/${s.id}" data-cart-close tabindex="-1" aria-hidden="true"><img src="${esc(svcPhoto(s))}" alt=""></a><span class="extras__name"><a href="#/servicio/${s.id}" data-cart-close>${esc(s.name)}</a><small>${durLabel(s.duration_min)} · ${priceLabel(s.price)}</small></span><button type="button" class="cart__rm" data-cart-rm="${s.id}" aria-label="Quitar ${esc(s.name)}">×</button></li>`).join("")}
+    ${snacks.map(([n, p, img]) => `<li><a class="cart__pic" href="#/producto/${img}" data-cart-close tabindex="-1" aria-hidden="true">${pkImg(img)}</a><span class="extras__name"><a href="#/producto/${img}" data-cart-close>${esc(n)}</a><small>${money(p)} c/u · ${money(p * ex[n])}</small></span>
       <span class="qty"><button type="button" data-cx="${esc(n)}" data-d="-1" aria-label="Quitar ${esc(n)}">−</button><b>${ex[n]}</b><button type="button" data-cx="${esc(n)}" data-d="1" aria-label="Agregar ${esc(n)}">+</button></span></li>`).join("")}
   </ul>
+  <button type="button" class="xpromo xpromo--sm" data-shop-open><span class="xpromo__txt"><b>+ Snacks y bebidas</b><small>Cervezas, gaseosas y snacks para tu cita</small></span><span class="xpromo__cta">Ver →</span></button>
   <p class="cart__total"><span>Total</span><strong>${money(total)}</strong></p>
   <p class="muted small">Se paga en la barbería, después del servicio.</p>
   ${svcs.length ? `<a class="btn btn--lg btn--block" href="#/reservar" data-cart-close>Reservar · elegir barbero y hora</a>`
@@ -267,6 +353,8 @@ export function refreshCart() {
   const n = cartCount();
   document.querySelectorAll("[data-cart-n]").forEach((el) => { el.textContent = n; el.hidden = !n; });
   const body = $("#cartBody"); if (body) body.innerHTML = cartHtml();
+  const ex = Booking.get().extras || {};
+  document.querySelectorAll("[data-cxn]").forEach((el) => { el.textContent = ex[el.dataset.cxn] || 0; });
 }
 function toggleCart(open) {
   const c = $("#cart"); if (!c) return;
@@ -292,6 +380,8 @@ document.addEventListener("click", (e) => {
   if (cx) { addExtra(cx.dataset.cartX, 1); refreshCart(); toast(`${cx.dataset.cartX} agregado al carrito`); }
   const rm = e.target.closest("[data-cart-rm]");
   if (rm) { Booking.set({ serviceIds: cartSvcs().map((s) => s.id).filter((id) => id !== rm.dataset.cartRm), start: null }); refreshCart(); }
+  const so = e.target.closest("[data-shop-open]");
+  if (so && !so.closest("#steps")) openShop();   // en la reserva lo abre su propio manejador
   const cq = e.target.closest("[data-cx]");
   if (cq) { addExtra(cq.dataset.cx, +cq.dataset.d); refreshCart(); }
   if (e.target.closest("[data-route-open]")) $("#routeDlg")?.showModal();
@@ -568,32 +658,20 @@ export function mountBooking() {
       ${guest ? `<label class="field"><span>Correo</span><input name="email" type="email" required maxlength="200" autocomplete="email" placeholder="Te enviamos la confirmación y el recordatorio"></label>` : ""}
       <label class="field"><span>Nota para el barbero (opcional)</span>
         <textarea name="notes" maxlength="500" rows="2" placeholder="Ej.: quiero mantener el largo arriba">${esc(b.notes || "")}</textarea></label>
-      ${extrasPicker(b.extras || {})}
+      ${extrasPromo(b.extras || {})}
       <p class="muted small">${guest ? "Reservas como invitado." : `Cuenta: <strong>${esc(State.user.email)}</strong>.`} El pago se hace en la barbería.</p>
       ${consentChecks()}
       <button class="btn btn--lg btn--block" type="submit" data-busy="Confirmando…">Confirmar cita</button>
       <p class="form-msg" id="confirmMsg" role="alert"></p></form>`;
   }
 
-  // Adicionales: {nombre: cantidad} en la reserva guardada; se actualiza en el sitio para no borrar lo que ya se escribió.
-  const exTotal = (ex) => { const t = extrasSum(ex); return t ? `Adicionales: <strong>${money(t)}</strong> · se pagan en la barbería` : ""; };
-  function extrasPicker(ex) {
-    return `<details class="extras" ${Object.keys(ex).length ? "open" : ""}><summary>¿Deseas algún adicional? <span class="muted small">Snacks y bebidas para después del corte</span></summary>
-      <ul class="extras__list">${SHOP_ITEMS.map(([n, p, img]) => `<li><span class="extras__pic"><img src="assets/tienda/${img}.jpg?v=2" alt="" loading="lazy"></span><span class="extras__name">${esc(n)}<small>${money(p)}</small></span>
-        <span class="qty"><button type="button" data-x="${esc(n)}" data-d="-1" aria-label="Quitar ${esc(n)}" ${ex[n] ? "" : "disabled"}>−</button><b aria-live="polite">${ex[n] || 0}</b><button type="button" data-x="${esc(n)}" data-d="1" aria-label="Agregar ${esc(n)}">+</button></span></li>`).join("")}</ul>
-      <p class="extras__total" id="exTotal">${exTotal(ex)}</p></details>`;
-  }
-
   steps.addEventListener("click", (e) => {
-    const x = e.target.closest("[data-x]");
-    if (x) {
-      const n = x.dataset.x, li = x.closest("li"), ex = addExtra(n, +x.dataset.d);
-      $("b", li).textContent = ex[n] || 0; $("[data-d='-1']", li).disabled = !ex[n]; $("#exTotal").innerHTML = exTotal(ex);
-      refreshCart();
-      const tot = $(".sum__total dd", summary), b = Booking.get();   // solo el total: re-dibujar borraría lo escrito en el formulario
+    if (e.target.closest("[data-shop-open]")) return openShop(() => {   // se actualiza en el sitio para no borrar lo que ya se escribió
+      const b = Booking.get();
+      $("#exPromo").outerHTML = extrasPromo(b.extras || {});
+      const tot = $(".sum__total dd", summary);   // solo el total: re-dibujar borraría lo escrito en el formulario
       if (tot && !cartSvcs(b).some((s) => s.price == null)) tot.textContent = money(cartSvcs(b).reduce((t, s) => t + Number(s.price), 0) + extrasSum(b.extras));
-      return;
-    }
+    });
     const o = e.target.closest("[data-open]");
     if (o) return go(+o.dataset.open);
     if (e.target.closest("[data-next]")) return go(null);
