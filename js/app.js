@@ -1,8 +1,8 @@
 /* Arranque y enrutador (#/ruta). Las rutas privadas se validan aquí y, sobre todo, en RLS. */
-import { CONFIGURED, sb, State, $, esc, safeUrl, loader, emptyState, friendly, loadPublic, loadProfile, isAdmin, waLink, cookieChoice, setCookieChoice } from "./core.js?v=20261102d";
-import { viewLegal } from "./legal.js?v=20261102d";
-import { viewHome, mountHome, viewBooking, mountBooking, viewBooked, cartCount } from "./public.js?v=20261102d";
-import { viewAccount, processAuthLink, Recovery } from "./account.js?v=20261102d";
+import { CONFIGURED, sb, State, $, esc, safeUrl, loader, emptyState, friendly, loadPublic, loadProfile, isAdmin, waLink, cookieChoice, setCookieChoice } from "./core.js?v=20261102e";
+import { viewLegal } from "./legal.js?v=20261102e";
+import { viewHome, mountHome, viewBooking, mountBooking, viewBooked, cartCount, viewService } from "./public.js?v=20261102e";
+import { viewAccount, processAuthLink, Recovery } from "./account.js?v=20261102e";
 
 const app = $("#app");
 let seq = 0;
@@ -39,6 +39,7 @@ function header() {
       <div class="top__inner">
         <div class="top__left">
           <button class="menu-btn" type="button" aria-expanded="false" aria-controls="drawer" aria-label="Abrir menú"><span class="menu-btn__i" aria-hidden="true"><i></i><i></i></span></button>
+          <nav class="top__nav" aria-label="Principal">${links.filter(([, id]) => ["servicios", "barberos", "nosotros", "visitanos"].includes(id)).map(([t, id]) => `<a href="#/inicio/${id}">${t}</a>`).join("")}</nav>
         </div>
         <a class="brand" href="#/" aria-label="${esc(n.nombre || "Elegance Barber")} — inicio">
           <img src="${esc(customLogo() || "assets/logo-crown-dark.png")}" alt="" class="brand__logo${customLogo() ? "" : " is-crown"}" width="40" height="40">
@@ -107,9 +108,10 @@ async function render() {
     if (route === "admin") {
       if (!State.user) { location.hash = "#/cuenta?volver=admin"; return; }
       if (!isAdmin()) html = `<section class="wrap narrow">${emptyState("No tienes permisos de administrador.", "Esta sección es solo para el equipo de la barbería.", `<a class="btn" href="#/">Ir al inicio</a>`)}</section>`;
-      else { const inPanel = $(".adm"); if (inPanel) inPanel.classList.add("is-busy"); else app.innerHTML = loader("Cargando panel…"); const Admin = await import("./admin.js?v=20261102d"); if (my !== seq) return; ({ html, mount } = await Admin.view(a || "resumen", b, query)); }
+      else { const inPanel = $(".adm"); if (inPanel) inPanel.classList.add("is-busy"); else app.innerHTML = loader("Cargando panel…"); const Admin = await import("./admin.js?v=20261102e"); if (my !== seq) return; ({ html, mount } = await Admin.view(a || "resumen", b, query)); }
     } else if (route === "" || route === "inicio") { html = viewHome(); mount = mountHome; }
     else if (route === "legal") html = viewLegal(a);
+    else if (route === "servicio" && a) html = viewService(a);
     else if (route === "reservar") { html = viewBooking(query); mount = mountBooking; }
     else if (route === "reserva" && a) { app.innerHTML = header() + loader(); html = State.user ? await viewBooked(a) : ""; if (!State.user) { location.hash = "#/cuenta"; return; } }
     else if (route === "cuenta") {

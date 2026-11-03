@@ -3,7 +3,7 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday,
   fmtDay, fmtTime, fmtDate, hhmm, ymd, friendly, toast, loader, emptyState, busy, scheduleByDay, barberWorkDays, waLink, setMsg,
   mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal
-} from "./core.js?v=20261102d";
+} from "./core.js?v=20261102e";
 
 const N = () => State.settings.negocio || {};
 const R = () => State.settings.reservas || {};
@@ -287,7 +287,7 @@ document.addEventListener("click", (e) => {
   if (e.target.closest("[data-cart-open]")) return toggleCart(true);
   if (e.target.closest("[data-cart-close]")) toggleCart(false);
   const cs = e.target.closest("[data-cart-svc]");
-  if (cs && addService(cs.dataset.cartSvc)) { refreshCart(); toast("Servicio agregado al carrito"); }
+  if (cs && addService(cs.dataset.cartSvc)) { refreshCart(); toast("Servicio agregado al carrito"); if (cs.closest(".pdp__acts")) cs.textContent = "✓ Ya está en tu carrito"; }
   const cx = e.target.closest("[data-cart-x]");
   if (cx) { addExtra(cx.dataset.cartX, 1); refreshCart(); toast(`${cx.dataset.cartX} agregado al carrito`); }
   const rm = e.target.closest("[data-cart-rm]");
@@ -315,13 +315,49 @@ function svcPhoto(s) {
 
 function menuItem(s, k = 0, cat = "") {
   return `<li class="rv" style="--i:${k % 4}" data-cat="${s.category_id || ""}"><div class="cat-card">
-    <figure class="cat-card__img"><img src="${esc(svcPhoto(s))}" alt="" loading="lazy">${cat ? `<span class="cat-card__tag">${esc(cat)}</span>` : ""}<span class="cat-card__dur">${durLabel(s.duration_min)}</span></figure>
+    <a class="cat-card__img" href="#/servicio/${s.id}" tabindex="-1" aria-hidden="true"><img src="${esc(svcPhoto(s))}" alt="" loading="lazy">${cat ? `<span class="cat-card__tag">${esc(cat)}</span>` : ""}<span class="cat-card__dur">${durLabel(s.duration_min)}</span></a>
     <div class="cat-card__body">
-      <h4>${esc(s.name)}</h4>
+      <h4><a href="#/servicio/${s.id}">${esc(s.name)}</a></h4>
       ${s.description ? `<p>${esc(s.description)}</p>` : ""}
       <div class="cat-card__foot"><span class="cat-card__price${s.price == null ? " is-pending" : ""}">${priceLabel(s.price)}</span>
         <span class="cat-card__acts"><button type="button" class="cart-add" data-cart-svc="${s.id}" aria-label="Agregar ${esc(s.name)} al carrito">+ Agregar</button><a class="cat-card__go" href="#/reservar?servicio=${s.id}">Reservar</a></span></div>
     </div></div></li>`;
+}
+
+/* Página de un servicio, estilo tienda: foto grande, precio, descripción y botones. Solo datos reales del panel. */
+export function viewService(id) {
+  const s = activeServices().find((x) => x.id === id);
+  if (!s) return `<section class="wrap narrow">${emptyState("Este servicio no está disponible.", "", `<a class="btn" href="#/inicio/servicios">Ver servicios</a>`)}</section>`;
+  const cat = State.categories.find((c) => c.id === s.category_id)?.name;
+  const inCart = cartSvcs().some((x) => x.id === s.id);
+  const others = activeServices().filter((x) => x.id !== s.id && (!s.category_id || x.category_id === s.category_id)).slice(0, 4);
+  const wa = waLink();
+  return `<section class="wrap pdp">
+    <nav class="pdp__crumbs" aria-label="Ruta"><a href="#/">Inicio</a> / <a href="#/inicio/servicios">Servicios</a>${cat ? ` / <span>${esc(cat)}</span>` : ""}</nav>
+    <div class="pdp__grid">
+      <figure class="pdp__img"><img src="${esc(svcPhoto(s))}" alt="${esc(s.name)}"></figure>
+      <div class="pdp__info">
+        ${cat ? `<p class="label">${esc(cat)}</p>` : ""}
+        <h1>${esc(s.name)}</h1>
+        <p class="pdp__price${s.price == null ? " is-pending" : ""}">${priceLabel(s.price)}</p>
+        <p class="muted small">Duración ${durLabel(s.duration_min)} · Precios en COP · Se paga en la barbería</p>
+        ${s.description ? `<p class="pdp__desc">${esc(s.description)}</p>` : ""}
+        <div class="pdp__acts">
+          <button type="button" class="btn btn--lg btn--block" data-cart-svc="${s.id}">${inCart ? "✓ Ya está en tu carrito" : "Agregar al carrito"}</button>
+          <a class="btn btn--lg btn--block btn--ghost" href="#/reservar?servicio=${s.id}">Reservar ahora</a>
+          ${wa ? `<a class="btn btn--block btn--ghost" href="${esc(wa)}" target="_blank" rel="noopener">Preguntar por WhatsApp</a>` : ""}
+        </div>
+        <details class="pdp__more" open><summary>Detalles</summary><ul>
+          <li>Duración: ${durLabel(s.duration_min)}</li>
+          ${cat ? `<li>Categoría: ${esc(cat)}</li>` : ""}
+          <li>Eliges tu barbero y tu hora al reservar.</li>
+          <li>Puedes cancelar o reprogramar hasta ${Number(R().cancelacion_min_horas ?? 2)} h antes desde tu cuenta.</li>
+          ${N().direccion ? `<li>Lugar: ${esc(N().direccion)}</li>` : ""}
+        </ul></details>
+      </div>
+    </div>
+    ${others.length ? `<h2 class="pdp__rel">También te puede interesar</h2><ul class="catalog">${others.map((x, k) => menuItem(x, k, State.categories.find((c) => c.id === x.category_id)?.name)).join("")}</ul>` : ""}
+  </section>`;
 }
 
 /* ===================== SELECTOR SEMANAL DE HORARIOS =====================

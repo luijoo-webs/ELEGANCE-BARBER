@@ -2,7 +2,7 @@
 // Edge Function de Supabase. La llaman la web al reservar y una tarea programada cada 5 minutos (08_programar_correos.sql).
 // Secretos (Edge Functions → Secrets): SMTP_USER = correo Gmail de la barbería, SMTP_PASS = contraseña de aplicación de Gmail.
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
+import nodemailer from "npm:nodemailer@6.9.16";
 
 const SITE = "https://luijoo-webs.github.io/ELEGANCE-BARBER/";
 const TZ = "America/Bogota";
@@ -60,7 +60,9 @@ Deno.serve(async () => {
   if (!user || !pass) return Response.json({ error: "Faltan los secretos SMTP_USER y SMTP_PASS" }, { status: 500 });
   const { data: s } = await db.from("settings").select("value").eq("key", "negocio").maybeSingle();
   const neg = (s?.value ?? {}) as Record<string, string>;
-  const smtp = new SMTPClient({ connection: { hostname: "smtp.gmail.com", port: 465, tls: true, auth: { username: user, password: pass } } });
+  const smtp = nodemailer.createTransport({ host: "smtp.gmail.com", port: 465, secure: true, auth: { user, pass: pass.replace(/\s/g, "") } });
+  // Se comprueba el acceso a Gmail ANTES de reclamar citas: si falla, nada queda marcado como avisado.
+  try { await smtp.verify(); } catch (e) { console.error("gmail", e); return Response.json({ error: `Gmail rechazó el acceso: ${(e as Error).message}` }, { status: 502 }); }
   let sent = 0, failed = 0;
   for (const [kind, rpc, col] of [["confirmacion", "claim_confirmations", "confirm_sent_at"], ["recordatorio", "claim_reminders", "reminder_sent_at"]] as const) {
     const { data, error } = await db.rpc(rpc);
@@ -68,7 +70,7 @@ Deno.serve(async () => {
     for (const l of visits(data as Appt[])) {
       const { subject, html } = mail(kind, l, neg);
       try {
-        await smtp.send({ from: `${neg.nombre || "The Elegance of the Barber"} <${user}>`, to: l[0].client_email, subject, html, content: "auto" });
+        await smtp.sendMail({ from: `${neg.nombre || "The Elegance of the Barber"} <${user}>`, to: l[0].client_email, subject, html });
         sent++;
       } catch (e) {
         failed++; console.error("envío", e);
@@ -76,6 +78,6 @@ Deno.serve(async () => {
       }
     }
   }
-  await smtp.close();
+  smtp.close();
   return Response.json({ sent, failed });
 });
