@@ -26,7 +26,7 @@ await db.exec(`
   grant execute on function auth.uid() to anon, authenticated;
   alter default privileges in schema public grant all on tables to anon, authenticated;
 `);
-for (const f of ["01_esquema.sql", "03_finanzas.sql", "04_negocio_real.sql", "05_adicionales.sql", "06_carrito.sql", "07_carrito_y_correos.sql"]) await db.exec(readFileSync(join(ROOT, "supabase", f), "utf8"));
+for (const f of ["01_esquema.sql", "03_finanzas.sql", "04_negocio_real.sql", "05_adicionales.sql", "06_carrito.sql", "07_carrito_y_correos.sql", "09_invitados.sql"]) await db.exec(readFileSync(join(ROOT, "supabase", f), "utf8"));
 
 /* ---------- Auth simulado ---------- */
 const passwords = new Map();

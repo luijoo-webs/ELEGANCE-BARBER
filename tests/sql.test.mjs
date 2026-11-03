@@ -272,4 +272,26 @@ assert.equal((await db.query(`select count(*)::int n from claim_reminders()`)).r
 assert.equal((await db.query(`select count(*)::int n from claim_reminders()`)).rows[0].n, 0);
 ok("recordatorio: sale una vez para toda la visita cuando la primera cita está a 2 h o menos");
 
+console.log("Migración 09 (reserva como invitado)");
+const m9 = readFileSync(new URL("../supabase/09_invitados.sql", import.meta.url), "utf8");
+await db.exec(m9); await db.exec(m9);
+const guest = (hhmm, email = "Inv@Correo.co", phone = "300 123 4567", x = null) =>
+  as(null, `select book_cart_guest('Invitado Uno', $1, $2, $3::uuid[], null, $4, null, $5::jsonb) r`, [phone, email, [barba.id], at(hhmm), x]);
+const [{ r: gr }] = await guest("08:00", undefined, undefined, JSON.stringify([{ n: "Soda", q: 2, p: 3000 }]));
+const grow = (await db.query(`select client_id, client_name, client_email, extras, created_by from appointments where id = $1`, [gr.ids[0]])).rows[0];
+assert.equal(grow.client_id, null); assert.equal(grow.created_by, null); assert.equal(grow.client_email, "inv@correo.co");
+assert.equal(grow.client_name, "Invitado Uno"); assert.deepEqual(grow.extras, [{ n: "Soda", q: 2, p: 3000 }]); assert.ok(gr.barber && gr.ends_at);
+assert.ok((await db.query(`select id from claim_confirmations()`)).rows.some((r) => r.id === gr.ids[0]));
+ok("invitado: reserva sin cuenta con nombre, celular y correo; recibe el correo de confirmación");
+await fails(as(null, `select book_appointment($1, null, $2)`, [barba.id, at("16:30")]), "permission denied");
+await fails(guest("16:30", "malo"), "CORREO_INVALIDO");
+await fails(guest("16:30", undefined, "12"), "CELULAR_INVALIDO");
+await fails(as(null, `select book_cart_guest('X', '3001234567', 'a@b.co', $1::uuid[], null, $2)`, [[barba.id], at("16:30")]), "NOMBRE_INVALIDO");
+await fails(guest("16:30", undefined, undefined, '[{"n":"X","q":50,"p":1}]'), "ADICIONALES_INVALIDOS");
+ok("invitado: se validan correo, celular, nombre y adicionales; sin datos no se puede reservar");
+await guest("09:10", "otro@correo.co"); await guest("10:20", "inv@correo.co", "311 000 0000");
+await fails(guest("16:30", "Inv@correo.co", "3001234567"), "LIMITE_RESERVAS");   // 2 por celular + 1 por correo = 3
+  await guest("16:30", "nuevo@correo.co", "315 999 9999");
+ok("invitado: el límite de reservas activas se cuenta por correo o celular");
+
 console.log(`\n${passed} pruebas OK`);

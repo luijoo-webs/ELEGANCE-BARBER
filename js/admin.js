@@ -3,10 +3,11 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday, ymd, toIso, hhmm,
   fmtTime, fmtDate, fmtDay, fmtDateTime, minutes, fromMinutes, shortTime, STATUS, statusBadge, friendly, toast, loader, emptyState,
   formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin, extrasText, extrasTotal
-} from "./core.js?v=20261102f";
+} from "./core.js?v=20261102g";
+import { SHOP_ITEMS } from "./public.js?v=20261102g";
 
 const SECTIONS = [
-  ["resumen", "Resumen"], ["agenda", "Agenda"], ["citas", "Citas"], ["servicios", "Servicios"], ["barberos", "Barberos"],
+  ["resumen", "Resumen"], ["agenda", "Agenda"], ["ventas", "Ventas"], ["citas", "Citas"], ["servicios", "Servicios"], ["barberos", "Barberos"],
   ["clientes", "Clientes"], ["horarios", "Horarios y cierres"], ["configuracion", "Configuración"], ["estadisticas", "Estadísticas"]
 ];
 const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
@@ -22,6 +23,7 @@ const waNum = (t) => { const d = String(t).replace(/\D/g, ""); return d.length =
 const ICON = {
   resumen: '<path d="M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z"/>',
   agenda: '<rect x="3" y="5" width="18" height="16"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  ventas: '<path d="M3 4h2l2.4 11h11.2L21 7H6.2M9 20h.01M18 20h.01"/>',
   citas: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   servicios: '<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12"/>',
   barberos: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
@@ -57,7 +59,7 @@ export async function view(sec, sub, query) {
   if (channel) { sb.removeChannel(channel); channel = null; }
   if (!isAdmin()) return { html: emptyState("No tienes permisos de administrador.") };
   await loadPublic();   // con sesión de admin, RLS devuelve también lo inactivo
-  const views = { resumen: vResumen, agenda: vAgenda, citas: vCitas, servicios: vServicios, barberos: vBarberos, clientes: vClientes,
+  const views = { resumen: vResumen, agenda: vAgenda, ventas: vVentas, citas: vCitas, servicios: vServicios, barberos: vBarberos, clientes: vClientes,
     horarios: vHorarios, configuracion: vConfig, consentimientos: vConsentimientos, estadisticas: vEstadisticas };
   const fn = views[sec];
   if (!fn) return { html: shell("", "Sección no encontrada", "", emptyState("Esa sección no existe.")) };
@@ -977,4 +979,65 @@ function financeEditor(r = {}) {
       m.close(); toast(r.id ? "Movimiento actualizado." : "Movimiento registrado."); refresh();
     });
   });
+}
+
+/* Ventas en el local (cliente que llega sin cita): servicios + adicionales; se guardan como ingresos en finanzas. */
+async function vVentas() {
+  const svcs = State.services.filter((s) => s.active && !s.deleted_at), barbers = State.barbers.filter((b) => b.active && !b.deleted_at);
+  const today = todayYmd();
+  const sales = (await q(sb.from("finance_entries").select("*").eq("kind", "ingreso").eq("entry_date", today).order("created_at", { ascending: false }))).filter((r) => r.description.startsWith("Venta"));
+  const html = shell("ventas", "Ventas", "", `
+    <form class="form card" id="saleForm" novalidate>
+      <h2>Nueva venta</h2>
+      <p class="muted small">Para clientes que llegan sin cita. El precio se puede ajustar; al guardar se suma a Estadísticas como ingreso.</p>
+      <fieldset class="field"><legend>Servicios</legend><div class="sale__list">
+        ${svcs.map((s) => `<label class="sale__row"><input type="checkbox" name="svc" value="${s.id}"><span>${esc(s.name)}</span>
+          <input type="number" min="0" step="any" inputmode="decimal" data-price="${s.id}" value="${s.price != null ? Number(s.price) : ""}" placeholder="Precio" aria-label="Precio de ${esc(s.name)}"></label>`).join("") || `<p class="muted">No hay servicios activos.</p>`}
+      </div></fieldset>
+      <fieldset class="field"><legend>Adicionales</legend><div class="sale__list">
+        ${SHOP_ITEMS.map(([n, p], i) => `<label class="sale__row"><span>${esc(n)} <small class="muted">${money(p)}</small></span>
+          <input type="number" min="0" max="20" step="1" inputmode="numeric" data-x="${i}" value="0" aria-label="Cantidad de ${esc(n)}"></label>`).join("")}
+      </div></fieldset>
+      <div class="grid-2">
+        <label class="field"><span>Barbero</span><select name="barber"><option value="">—</option>${barbers.map((b) => `<option value="${b.id}">${esc(b.name)}</option>`).join("")}</select></label>
+        <label class="field"><span>Medio de pago</span><input name="method" maxlength="40" list="saleMethods" value="Efectivo"><datalist id="saleMethods"><option value="Efectivo"><option value="Transferencia"><option value="Nequi"><option value="Tarjeta"></datalist></label>
+        <label class="field"><span>Cliente (opcional)</span><input name="client" maxlength="80"></label>
+        <label class="field"><span>Fecha</span><input name="entry_date" type="date" required value="${today}"></label>
+      </div>
+      <p class="sale__total">Total: <strong id="saleTotal">${money(0) || "$ 0"}</strong></p>
+      <button class="btn btn--block" type="submit" data-busy="Guardando…">Registrar venta</button><p class="form-msg" id="saleMsg" role="alert"></p>
+    </form>
+    <div class="card"><h2>Ventas de hoy</h2>${sales.length ? `<div class="table-wrap"><table><thead><tr><th>Descripción</th><th>Medio</th><th class="num">Valor</th></tr></thead><tbody>
+      ${sales.map((r) => `<tr><td>${esc(r.description)}${r.notes ? `<br><span class="muted">${esc(r.notes)}</span>` : ""}</td><td>${esc(r.method || "")}</td><td class="num">${money(r.amount)}</td></tr>`).join("")}
+      </tbody></table></div><p class="muted small">Total de hoy: <b>${money(sales.reduce((t, r) => t + Number(r.amount), 0))}</b>. Para editar o borrar, ve a Estadísticas.</p>` : `<p class="muted">Aún no hay ventas hoy.</p>`}</div>`);
+
+  const mount = () => {
+    const form = $("#saleForm");
+    const read = () => {
+      const lines = $$("[name=svc]:checked", form).map((c) => ({ s: svcs.find((x) => x.id === c.value), amount: Number($(`[data-price="${c.value}"]`, form).value) }));
+      const extras = $$("[data-x]", form).map((i) => ({ item: SHOP_ITEMS[i.dataset.x], q: Math.max(0, Math.floor(Number(i.value) || 0)) })).filter((x) => x.q);
+      const extTotal = extras.reduce((t, x) => t + x.q * x.item[1], 0);
+      return { lines, extras, extTotal, total: lines.reduce((t, l) => t + (l.amount || 0), 0) + extTotal };
+    };
+    form.addEventListener("input", () => { $("#saleTotal").textContent = money(read().total) || "$ 0"; });
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const f = formData(form), { lines, extras, extTotal } = read(), msg = $("#saleMsg");
+      if (!lines.length && !extras.length) return setMsg(msg, "Elige al menos un servicio o un adicional.");
+      if (lines.some((l) => !(l.amount > 0))) return setMsg(msg, "Escribe el precio de cada servicio elegido.");
+      if (!f.entry_date) return setMsg(msg, "Indica la fecha.");
+      const who = [f.barber ? barberName(f.barber) : "", f.client.trim()].filter(Boolean).join(" · ");
+      const base = { kind: "ingreso", entry_date: f.entry_date, method: f.method.trim() || null, notes: who || null };
+      const rows = [
+        ...lines.map((l) => ({ ...base, description: `Venta: ${l.s.name}`.slice(0, 200), category: "Servicios", amount: l.amount })),
+        ...(extras.length ? [{ ...base, description: `Venta adicionales: ${extras.map((x) => `${x.q}× ${x.item[0]}`).join(", ")}`.slice(0, 200), category: "Venta de productos", amount: extTotal }] : [])
+      ];
+      busy(e.submitter, async () => {
+        const { error } = await sb.from("finance_entries").insert(rows);
+        if (error) return setMsg(msg, friendly(error));
+        toast("Venta registrada en finanzas."); refresh();
+      });
+    });
+  };
+  return { html, mount };
 }

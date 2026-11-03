@@ -1,6 +1,6 @@
 /* Núcleo compartido: conexión, estado, utilidades de fecha (America/Bogota), errores y UI básica. */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js?v=20261102f";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js?v=20261102g";
 
 export const CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 export const sb = CONFIGURED
@@ -92,6 +92,9 @@ export const statusBadge = (s) => `<span class="badge badge--${esc(s)}">${esc(ST
 /* ---------- Errores en español ---------- */
 const ERRORS = {
   NO_AUTENTICADO: "Inicia sesión para continuar.",
+  NOMBRE_INVALIDO: "Escribe tu nombre completo.",
+  CELULAR_INVALIDO: "Escribe un celular válido para contactarte.",
+  CORREO_INVALIDO: "Escribe un correo válido: ahí te llega la confirmación y el recordatorio.",
   NO_AUTORIZADO: "No tienes permisos para esta acción.",
   SOLO_CANCELADAS: "Solo se pueden eliminar citas canceladas.",
   CITA_NO_ENCONTRADA: "La cita ya no existe.",

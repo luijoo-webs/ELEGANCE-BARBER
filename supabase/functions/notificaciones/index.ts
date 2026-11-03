@@ -8,7 +8,7 @@ const SITE = "https://luijoo-webs.github.io/ELEGANCE-BARBER/";
 const TZ = "America/Bogota";
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-type Appt = { id: string; cart_id: string | null; client_name: string; client_email: string; barber_name: string; service_name: string;
+type Appt = { id: string; cart_id: string | null; client_id: string | null; client_name: string; client_email: string; barber_name: string; service_name: string;
   price: number | null; starts_at: string; ends_at: string; status: string; extras: { n: string; q: number; p: number }[] | null };
 
 const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
@@ -31,6 +31,10 @@ function mail(kind: "confirmacion" | "recordatorio", l: Appt[], neg: Record<stri
     : pend ? "Recibimos tu reserva" : `Tu cita está confirmada: ${fecha(a.starts_at)}, ${hora(a.starts_at)}`;
   const intro = kind === "recordatorio" ? "Te recordamos que tu cita es en menos de 2 horas. ¡Te esperamos!"
     : pend ? "Recibimos tu reserva. La barbería la confirmará pronto." : "Tu cita quedó confirmada. Estos son los detalles:";
+  // Invitado (sin cuenta): no tiene "Mis citas"; cambia o cancela por WhatsApp.
+  const tel = String(neg.telefono || "").replace(/\D/g, "");
+  const wa = /^https:\/\//.test(neg.whatsapp_url || "") ? neg.whatsapp_url : tel ? `https://wa.me/${tel.length === 10 ? "57" + tel : tel}` : "";
+  const btn = a.client_id ? [`${SITE}#/cuenta`, "Ver o cambiar mi cita"] : wa ? [esc(wa), "Escribir por WhatsApp"] : null;
   const row = (k: string, v: string) => `<tr><td style="padding:8px 0;color:#6b665f;width:40%">${k}</td><td style="padding:8px 0;text-align:right">${v}</td></tr>`;
   const html = `<div style="background:#f5f2ed;padding:24px;font-family:Arial,sans-serif;color:#141312">
   <div style="max-width:520px;margin:auto;background:#fff;border-radius:12px;overflow:hidden">
@@ -47,8 +51,8 @@ function mail(kind: "confirmacion" | "recordatorio", l: Appt[], neg: Record<stri
         ${total != null ? row("<b>Total a pagar en la barbería</b>", `<b>${money(total)}</b>`) : ""}
         ${neg.direccion ? row("Lugar", esc(neg.direccion)) : ""}
       </table>
-      <p style="margin:22px 0 0"><a href="${SITE}#/cuenta" style="background:#141312;color:#fff;text-decoration:none;padding:12px 18px;border-radius:6px;display:inline-block">Ver o cambiar mi cita</a></p>
-      <p style="font-size:12px;color:#6b665f;margin:18px 0 0">Pagas en la barbería. Si no puedes asistir, cancela o reprograma desde tu cuenta.</p>
+      ${btn ? `<p style="margin:22px 0 0"><a href="${btn[0]}" style="background:#141312;color:#fff;text-decoration:none;padding:12px 18px;border-radius:6px;display:inline-block">${btn[1]}</a></p>` : ""}
+      <p style="font-size:12px;color:#6b665f;margin:18px 0 0">Pagas en la barbería. Si no puedes asistir, ${a.client_id ? "cancela o reprograma desde tu cuenta" : "avísanos por WhatsApp"}.</p>
     </div>
   </div></div>`;
   return { subject, html };

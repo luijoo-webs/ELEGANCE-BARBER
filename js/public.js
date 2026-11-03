@@ -3,7 +3,7 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday,
   fmtDay, fmtTime, fmtDate, hhmm, ymd, friendly, toast, loader, emptyState, busy, scheduleByDay, barberWorkDays, waLink, setMsg,
   mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal
-} from "./core.js?v=20261102f";
+} from "./core.js?v=20261102g";
 
 const N = () => State.settings.negocio || {};
 const R = () => State.settings.reservas || {};
@@ -228,7 +228,7 @@ const SHOP = {
     ["Jugo del Valle", 3500, "jugo-del-valle"], ["Agua personal", 2000, "agua"], ["Quatro pequeña", 2000, "quatro-pequena"], ["Speed Max", 2500, "speed-max"], ["Soda", 3000, "soda"]]
 };
 
-const SHOP_ITEMS = Object.values(SHOP).flat();
+export const SHOP_ITEMS = Object.values(SHOP).flat();
 const MAX_SVC = () => 10;   // servicios por visita (book_cart acepta hasta 10)
 const cartSvcs = (b = Booking.get()) => (b.serviceIds || []).map((id) => activeServices().find((s) => s.id === id)).filter(Boolean);
 const extrasSum = (ex = {}) => SHOP_ITEMS.reduce((t, [n, p]) => t + (ex[n] || 0) * p, 0);
@@ -559,17 +559,17 @@ export function mountBooking() {
   function go(n) { open = n; render(); $(".step.is-open")?.scrollIntoView({ behavior: "smooth", block: "start" }); }
 
   function confirmBlock(b) {
-    if (!State.user) return `<p>Para confirmar necesitas una cuenta. Tu selección queda guardada.</p>
-      <div class="row"><a class="btn" href="#/cuenta?volver=reservar">Iniciar sesión</a><a class="btn btn--ghost" href="#/cuenta/registro?volver=reservar">Crear cuenta</a></div>`;
-    const p = State.profile || {};
+    const p = State.profile || {}, guest = !State.user;
     return `<form id="confirmForm" class="form" novalidate>
+      ${guest ? `<p class="muted small">¿Tienes cuenta? <a href="#/cuenta?volver=reservar">Inicia sesión</a> o <a href="#/cuenta/registro?volver=reservar">créala</a> para ver y cambiar tus citas. También puedes reservar como invitado:</p>` : ""}
       <p class="muted small">Tus datos de contacto: el barbero los verá en su agenda por si necesita escribirte.</p>
       <div class="grid-2"><label class="field"><span>Nombre completo</span><input name="full_name" required minlength="2" maxlength="120" autocomplete="name" value="${esc(p.full_name || "")}"></label>
         <label class="field"><span>Celular / WhatsApp</span><input name="phone" type="tel" required minlength="7" maxlength="30" autocomplete="tel" inputmode="tel" value="${esc(p.phone || "")}"></label></div>
+      ${guest ? `<label class="field"><span>Correo</span><input name="email" type="email" required maxlength="200" autocomplete="email" placeholder="Te enviamos la confirmación y el recordatorio"></label>` : ""}
       <label class="field"><span>Nota para el barbero (opcional)</span>
         <textarea name="notes" maxlength="500" rows="2" placeholder="Ej.: quiero mantener el largo arriba">${esc(b.notes || "")}</textarea></label>
       ${extrasPicker(b.extras || {})}
-      <p class="muted small">Cuenta: <strong>${esc(State.user.email)}</strong>. El pago se hace en la barbería.</p>
+      <p class="muted small">${guest ? "Reservas como invitado." : `Cuenta: <strong>${esc(State.user.email)}</strong>.`} El pago se hace en la barbería.</p>
       ${consentChecks()}
       <button class="btn btn--lg btn--block" type="submit" data-busy="Confirmando…">Confirmar cita</button>
       <p class="form-msg" id="confirmMsg" role="alert"></p></form>`;
@@ -613,28 +613,39 @@ export function mountBooking() {
     const b = Booking.get(), f = formData(e.target);
     if (f.full_name.trim().length < 2) return setMsg($("#confirmMsg"), "Escribe tu nombre completo.");
     if (f.phone.replace(/\D/g, "").length < 7) return setMsg($("#confirmMsg"), "Escribe un celular válido para contactarte.");
+    if (!State.user && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.email.trim())) return setMsg($("#confirmMsg"), friendly({ message: "CORREO_INVALIDO" }));
     if (consentMissing(f)) return setMsg($("#confirmMsg"), consentMissing(f));
+    const ids = cartSvcs(b).map((s) => s.id);
+    const extras = SHOP_ITEMS.filter(([n]) => b.extras?.[n]).map(([n, p]) => ({ n, q: b.extras[n], p }));
+    const args = { p_services: ids, p_barber: b.barberId !== "any" ? b.barberId : ids.length > 1 ? b.slotBarber : null,
+      p_start: b.start, p_notes: b.notes || null, p_extras: extras.length ? extras : null };
     await busy(e.submitter || $("#confirmForm button"), async () => {
+      if (!State.user) {   // invitado: sin cuenta, con correo para la confirmación y el recordatorio
+        try { await logConsent("reserva", f.email.trim(), f.full_name.trim()); } catch (ce) { return setMsg($("#confirmMsg"), friendly(ce)); }
+        const { data, error } = await sb.rpc("book_cart_guest", { p_name: f.full_name.trim(), p_phone: f.phone.trim(), p_email: f.email.trim(), ...args });
+        if (error) return failed(error);
+        sb.functions.invoke("notificaciones").catch(() => {});
+        const svcs = cartSvcs(b);
+        Booking.clear(); refreshCart();
+        steps.closest(".book").outerHTML = doneHtml(svcs.map((s) => ({ service_name: s.name, price: s.price, starts_at: data.starts_at, ends_at: data.ends_at,
+          barber_name: data.barber, status: data.status, extras: extras.length ? extras : null })), f.email.trim());
+        return scrollTo(0, 0);
+      }
       const { error: pe } = await sb.from("profiles").update({ full_name: f.full_name.trim(), phone: f.phone.trim() }).eq("id", State.user.id);
       if (pe) return setMsg($("#confirmMsg"), friendly(pe));
       try { await logConsent("reserva", State.user.email, f.full_name.trim()); } catch (ce) { return setMsg($("#confirmMsg"), friendly(ce)); }
       await loadProfile();
-      const ids = cartSvcs(b).map((s) => s.id);
-      const extras = SHOP_ITEMS.filter(([n]) => b.extras?.[n]).map(([n, p]) => ({ n, q: b.extras[n], p }));
-      const { data, error } = await sb.rpc("book_cart", {
-        p_services: ids, p_barber: b.barberId !== "any" ? b.barberId : ids.length > 1 ? b.slotBarber : null,
-        p_start: b.start, p_notes: b.notes || null, p_extras: extras.length ? extras : null
-      });
-      if (error) {
-        setMsg($("#confirmMsg"), friendly(error));
-        if (/HORARIO_OCUPADO|ANTICIPACION|BLOQUEADO|FUERA_DE_HORARIO/.test(error.message)) { Booking.set({ start: null }); toast(friendly(error), "err"); go(null); }
-        return;
-      }
+      const { data, error } = await sb.rpc("book_cart", args);
+      if (error) return failed(error);
       sb.functions.invoke("notificaciones").catch(() => {});   // correo de confirmación ya; si falla, lo manda la tarea programada
       Booking.clear();
       location.hash = `#/reserva/${data.join(",")}`;
     });
   });
+  function failed(error) {
+    setMsg($("#confirmMsg"), friendly(error));
+    if (/HORARIO_OCUPADO|ANTICIPACION|BLOQUEADO|FUERA_DE_HORARIO/.test(error.message)) { Booking.set({ start: null }); toast(friendly(error), "err"); go(null); }
+  }
   render();
 }
 
@@ -643,6 +654,11 @@ export async function viewBooked(id) {
   const { data: list, error } = await sb.from("appointments").select("*").in("id", id.split(",").slice(0, 10)).order("starts_at");
   const a = list?.[0], last = list?.at(-1);
   if (error || !a) return `<section class="wrap narrow">${emptyState("No encontramos esa reserva.", "", `<a class="btn" href="#/cuenta">Ver mis citas</a>`)}</section>`;
+  return doneHtml(list);
+}
+// guestEmail: reserva de invitado (no puede leer sus citas; se muestra lo que devolvió la reserva).
+function doneHtml(list, guestEmail) {
+  const a = list[0], last = list.at(-1), wa = waLink();
   const pend = a.status === "pendiente";
   return `<section class="wrap done">
     <div class="done__head"><p class="label">${pend ? "Reserva recibida" : "Cita confirmada"}</p>
@@ -658,8 +674,9 @@ export async function viewBooked(id) {
         ${N().direccion ? `<div><dt>Lugar</dt><dd>${esc(N().direccion)}</dd></div>` : ""}
       </dl>
     </div>
-    ${pend ? `<p class="muted">La barbería confirmará tu cita pronto. Si no se confirma antes de ${esc(fmtDateTime2(a.pending_expires_at))}, el horario se libera.</p>` : ""}
-    <div class="row"><a class="btn" href="#/cuenta">Ver mis citas</a><a class="btn btn--ghost" href="#/">Volver al inicio</a></div>
+    ${pend ? `<p class="muted">La barbería confirmará tu cita pronto.${a.pending_expires_at ? ` Si no se confirma antes de ${esc(fmtDateTime2(a.pending_expires_at))}, el horario se libera.` : ""}</p>` : ""}
+    ${guestEmail ? `<p class="muted">Te enviamos la confirmación a <strong>${esc(guestEmail)}</strong> y un recordatorio 2 horas antes. Para cambiar o cancelar, escríbenos${wa ? " por WhatsApp" : ""}.</p>` : ""}
+    <div class="row">${guestEmail ? (wa ? `<a class="btn" href="${esc(wa)}" target="_blank" rel="noopener">Escribir por WhatsApp</a>` : "") : `<a class="btn" href="#/cuenta">Ver mis citas</a>`}<a class="btn btn--ghost" href="#/">Volver al inicio</a></div>
   </section>`;
 }
 const fmtDateTime2 = (d) => d ? `${fmtDate(d)} ${fmtTime(d)}` : "";
