@@ -1109,3 +1109,7 @@ body.is-admin .ticket2 input { min-height: 34px; padding: 5px 9px; background: r
 .steps .is-done button { color: var(--text); }
 .steps .is-on i { background: #d9b25f; border-color: #141312; }
 .steps .is-on button { color: var(--text); font-weight: 800; }
+.paynote { align-self: flex-start; margin: 6px 0 0; padding: 3px 9px; border-radius: 999px; font: 700 .7rem var(--sans); }
+.paynote--wait { background: #fff6e0; color: #8a5d00; }
+.paynote--ok { background: #e7f4ea; color: #1f6b3a; }
+.paynote--no { background: #f9eeec; color: var(--danger); }

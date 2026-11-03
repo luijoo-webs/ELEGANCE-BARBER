@@ -3,8 +3,8 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday, ymd, toIso, hhmm,
   fmtTime, fmtDate, fmtDay, fmtDateTime, minutes, fromMinutes, shortTime, STATUS, statusBadge, friendly, toast, loader, emptyState,
   formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin, extrasText, extrasTotal
-} from "./core.js?v=20261103c";
-import { SHOP, svcPhoto } from "./public.js?v=20261103c";
+} from "./core.js?v=20261103d";
+import { SHOP, svcPhoto } from "./public.js?v=20261103d";
 
 const SECTIONS = [
   ["resumen", "Resumen"], ["agenda", "Agenda"], ["ventas", "Ventas"], ["citas", "Citas"], ["servicios", "Servicios"], ["barberos", "Barberos"],
@@ -39,6 +39,10 @@ function stepActions(a, attr) {
     : OPEN.includes(a.status) && ended ? ["completada", "Sí vino: completar"] : a.status === "confirmada" ? ["en_proceso", "Llegó: a la silla"] : a.status === "no_asistio" ? ["confirmada", "Sí vino"] : null;
   return `${main ? `<button class="btn btn--sm" type="button" ${attr}="${main[0]}">${main[1]}</button>` : ""}${started && ["pendiente", "confirmada"].includes(a.status) ? `<button class="btn btn--sm btn--ghost" type="button" ${attr}="no_asistio">No vino</button>` : ""}`;
 }
+// El pago es en la barbería: una cita reservada o confirmada todavía no es dinero.
+const PAY_NOTE = { pendiente: "Sin pagar · por ver si llega", confirmada: "Sin pagar · por ver si llega", en_proceso: "Sin pagar · en la silla", completada: "Pagada", no_asistio: "No llegó · no pagó" };
+const payNote = (a) => PAY_NOTE[a.status] ? `<p class="paynote paynote--${a.status === "completada" ? "ok" : a.status === "no_asistio" ? "no" : "wait"}">${PAY_NOTE[a.status]}</p>` : "";
+const payMethod = (a) => a.payment_method ? `${a.status === "completada" ? "Pagó con" : a.status === "cancelada" || a.status === "no_asistio" ? "Iba a pagar con" : "Pagará con"} ${esc(a.payment_method)}` : "";
 const stToast = (st) => st === "completada" ? "Cita completada: se sumó a finanzas." : `Estado: ${STATUS[st]}.`;
 
 /* Tarjeta de cita (Citas y ficha de cliente): foto del servicio, seguimiento y acciones rápidas. */
@@ -50,7 +54,8 @@ function apptCard(a, { client = true } = {}) {
       ${client ? "" : `<p class="muted" style="margin:0;font-size:.8rem">${esc(fmtDate(a.starts_at))}</p>`}
       ${client ? `<p class="acard__who">${esc(a.client_name || "Cliente")}${a.client_id ? "" : " <small>invitado</small>"}</p>` : ""}
       <h3>${esc(a.service_name)}</h3>
-      <p class="acard__meta"><span>${esc(a.barber_name)}</span>${a.price != null || a.extras?.length ? `<b>${money(apptTotal(a))}</b>` : ""}${a.payment_method ? `<span>${esc(a.payment_method)}</span>` : ""}${a.extras?.length ? `<span>+ ${esc(extrasText(a.extras))}</span>` : ""}</p>
+      <p class="acard__meta"><span>${esc(a.barber_name)}</span>${a.price != null || a.extras?.length ? `<b>${money(apptTotal(a))}</b>` : ""}${a.payment_method ? `<span>${payMethod(a)}</span>` : ""}${a.extras?.length ? `<span>+ ${esc(extrasText(a.extras))}</span>` : ""}</p>
+      ${payNote(a)}
       ${stepper(a, "data-qst")}
       <div class="acard__acts">
         ${stepActions(a, "data-qst")}
@@ -389,7 +394,7 @@ async function apptDetail(id) {
     <dl class="kv">
       <dt>Servicio</dt><dd>${esc(a.service_name)} · ${durLabel(a.duration_min)}</dd>
       <dt>Precio</dt><dd>${priceLabel(a.price)}</dd>
-      ${a.payment_method ? `<dt>Método de pago</dt><dd>${esc(a.payment_method)}</dd>` : ""}
+      ${PAY_NOTE[a.status] || a.payment_method ? `<dt>Pago</dt><dd>${[PAY_NOTE[a.status], payMethod(a)].filter(Boolean).join(" · ")}</dd>` : ""}
       <dt>Barbero</dt><dd>${esc(a.barber_name)}</dd>
       <dt>Fecha</dt><dd>${esc(fmtDate(a.starts_at, { year: "numeric" }))}</dd>
       <dt>Hora</dt><dd>${fmtTime(a.starts_at)} – ${fmtTime(a.ends_at)}</dd>
