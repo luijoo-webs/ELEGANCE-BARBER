@@ -3,7 +3,7 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday,
   fmtDay, fmtTime, fmtDate, hhmm, ymd, friendly, toast, loader, emptyState, busy, scheduleByDay, barberWorkDays, waLink, setMsg,
   mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal
-} from "./core.js?v=20261102c";
+} from "./core.js?v=20261102d";
 
 const N = () => State.settings.negocio || {};
 const R = () => State.settings.reservas || {};
@@ -229,7 +229,7 @@ const SHOP = {
 };
 
 const SHOP_ITEMS = Object.values(SHOP).flat();
-const MAX_SVC = () => Number(R().max_reservas_activas ?? 3);   // cada servicio es una cita; el servidor limita las activas
+const MAX_SVC = () => 10;   // servicios por visita (book_cart acepta hasta 10)
 const cartSvcs = (b = Booking.get()) => (b.serviceIds || []).map((id) => activeServices().find((s) => s.id === id)).filter(Boolean);
 const extrasSum = (ex = {}) => SHOP_ITEMS.reduce((t, [n, p]) => t + (ex[n] || 0) * p, 0);
 export const cartCount = () => { const b = Booking.get(); return cartSvcs(b).length + Object.values(b.extras || {}).reduce((t, q) => t + q, 0); };
@@ -594,6 +594,7 @@ export function mountBooking() {
         if (/HORARIO_OCUPADO|ANTICIPACION|BLOQUEADO|FUERA_DE_HORARIO/.test(error.message)) { Booking.set({ start: null }); toast(friendly(error), "err"); go(null); }
         return;
       }
+      sb.functions.invoke("notificaciones").catch(() => {});   // correo de confirmación ya; si falla, lo manda la tarea programada
       Booking.clear();
       location.hash = `#/reserva/${data.join(",")}`;
     });
@@ -603,7 +604,7 @@ export function mountBooking() {
 
 /* Confirmación visual después de reservar (lee la cita real desde Supabase). */
 export async function viewBooked(id) {
-  const { data: list, error } = await sb.from("appointments").select("*").in("id", id.split(",").slice(0, 5)).order("starts_at");
+  const { data: list, error } = await sb.from("appointments").select("*").in("id", id.split(",").slice(0, 10)).order("starts_at");
   const a = list?.[0], last = list?.at(-1);
   if (error || !a) return `<section class="wrap narrow">${emptyState("No encontramos esa reserva.", "", `<a class="btn" href="#/cuenta">Ver mis citas</a>`)}</section>`;
   const pend = a.status === "pendiente";

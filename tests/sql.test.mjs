@@ -249,4 +249,27 @@ await fails(as(U.admin, `select book_cart('{}'::uuid[], null, $1)`, [at("16:00")
 await fails(as(null, `select book_cart($1::uuid[], null, $2)`, [[barba.id], at("16:00")]), "permission denied");
 ok("carrito: si un servicio choca no queda ninguna cita; vacío o sin sesión se rechaza");
 
+console.log("Migración 07 (carrito sin tope y correos)");
+const m7 = readFileSync(new URL("../supabase/07_carrito_y_correos.sql", import.meta.url), "utf8");
+await db.exec(m7); await db.exec(m7);
+assert.equal((await db.query(`select count(*)::int n from appointments where confirm_sent_at is null or reminder_sent_at is null`)).rows[0].n, 0);
+ok("07: las citas que ya existían no reciben correos viejos");
+const seis = (await db.query(`select id from services where description = 'Incluye lavado de cabello.' order by sort_order limit 6`)).rows.map((r) => r.id);
+await db.query(`update settings set value = value || '{"max_reservas_activas": 3}' where key='reservas'`);
+const [{ book_cart: c6 }] = await as(U.admin, `select book_cart($1::uuid[], null, $2)`, [seis, at("15:20")]);
+const g = (await db.query(`select distinct cart_id from appointments where id = any($1)`, [c6])).rows;
+assert.equal(c6.length, 6); assert.equal(g.length, 1); assert.ok(g[0].cart_id);
+ok("carrito: 6 servicios en una visita aunque el límite sea 3 reservas activas");
+await fails(as(U.admin, `select book_appointment($1, null, $2)`, [barba.id, `${d}T09:30:00-05:00`]), "LIMITE_RESERVAS");
+ok("el límite cuenta visitas: 2 citas sueltas + el carrito de 6 = 3, la siguiente se rechaza");
+await fails(as(U.ana, `select claim_confirmations()`), "permission denied");
+const conf = (await db.query(`select id from claim_confirmations()`)).rows.map((r) => r.id);
+assert.ok(c6.every((id) => conf.includes(id)));
+assert.equal((await db.query(`select count(*)::int n from claim_confirmations()`)).rows[0].n, 0);
+ok("correo de confirmación: se reclama una sola vez y solo desde el servidor");
+await db.query(`update appointments set starts_at = now() + interval '60 min', ends_at = now() + interval '95 min' where id = $1`, [c6[0]]);
+assert.equal((await db.query(`select count(*)::int n from claim_reminders()`)).rows[0].n, 6);
+assert.equal((await db.query(`select count(*)::int n from claim_reminders()`)).rows[0].n, 0);
+ok("recordatorio: sale una vez para toda la visita cuando la primera cita está a 2 h o menos");
+
 console.log(`\n${passed} pruebas OK`);
