@@ -3,8 +3,8 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday, ymd, toIso, hhmm,
   fmtTime, fmtDate, fmtDay, fmtDateTime, minutes, fromMinutes, shortTime, STATUS, statusBadge, friendly, toast, loader, emptyState,
   formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin, extrasText, extrasTotal
-} from "./core.js?v=20261103b";
-import { SHOP, svcPhoto } from "./public.js?v=20261103b";
+} from "./core.js?v=20261103c";
+import { SHOP, svcPhoto } from "./public.js?v=20261103c";
 
 const SECTIONS = [
   ["resumen", "Resumen"], ["agenda", "Agenda"], ["ventas", "Ventas"], ["citas", "Citas"], ["servicios", "Servicios"], ["barberos", "Barberos"],
@@ -27,20 +27,33 @@ const apptTotal = (a) => Number(a.price || 0) + extrasTotal(a.extras);
 const waLinkTo = (phone) => `https://wa.me/${esc(waNum(phone))}`;
 const WA_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 1-13.3 7.9L3 21l1.2-4.5A9 9 0 1 1 21 12z"/></svg>';
 
-/* Tarjeta de cita (Citas y ficha de cliente): foto del servicio y acciones rápidas. */
+/* Seguimiento de la cita: cada paso se puede tocar, para avanzar o corregir. Solo "Completada" suma a finanzas. */
+const STEPS = ["pendiente", "confirmada", "en_proceso", "completada"];
+const LIVE = STEPS;   // las que ocupan la agenda; ni canceladas ni quien no vino
+const OPEN = STEPS.slice(0, 3);   // falta cerrarlas
+const stepper = (a, attr) => { const at = STEPS.indexOf(a.status);
+  return a.status === "cancelada" ? "" : `<ol class="steps">${STEPS.map((k, i) => `<li class="${i < at ? "is-done" : i === at ? "is-on" : ""}"><button type="button" ${attr}="${k}" ${i === at ? `disabled aria-current="step"` : ""}><i></i>${STATUS[k]}</button></li>`).join("")}</ol>`; };
+function stepActions(a, attr) {
+  const started = new Date(a.starts_at) <= new Date(), ended = new Date(a.ends_at) <= new Date();
+  const main = a.status === "pendiente" && !ended ? ["confirmada", "Confirmar"] : a.status === "en_proceso" ? ["completada", "Terminar y cobrar"]
+    : OPEN.includes(a.status) && ended ? ["completada", "Sí vino: completar"] : a.status === "confirmada" ? ["en_proceso", "Llegó: a la silla"] : a.status === "no_asistio" ? ["confirmada", "Sí vino"] : null;
+  return `${main ? `<button class="btn btn--sm" type="button" ${attr}="${main[0]}">${main[1]}</button>` : ""}${started && ["pendiente", "confirmada"].includes(a.status) ? `<button class="btn btn--sm btn--ghost" type="button" ${attr}="no_asistio">No vino</button>` : ""}`;
+}
+const stToast = (st) => st === "completada" ? "Cita completada: se sumó a finanzas." : `Estado: ${STATUS[st]}.`;
+
+/* Tarjeta de cita (Citas y ficha de cliente): foto del servicio, seguimiento y acciones rápidas. */
 function apptCard(a, { client = true } = {}) {
-  const started = new Date(a.starts_at) <= new Date(), more = (a.services?.length || 1) - 1;
+  const more = (a.services?.length || 1) - 1;
   return `<article class="acard acard--${a.status}" data-appt="${a.id}" tabindex="0">
-    <div class="acard__pic"><img src="${esc(apptPhoto(a))}" alt="" loading="lazy">${more ? `<span>+${more}</span>` : ""}</div>
+    <div class="acard__pic"><img src="${esc(apptPhoto(a))}" alt="" loading="lazy"><strong class="acard__time">${fmtTime(a.starts_at)}</strong>${statusBadge(a.status)}${more ? `<span>+${more}</span>` : ""}</div>
     <div class="acard__body">
-      <div class="acard__top"><strong class="acard__time">${fmtTime(a.starts_at)}</strong>${statusBadge(a.status)}</div>
       ${client ? "" : `<p class="muted" style="margin:0;font-size:.8rem">${esc(fmtDate(a.starts_at))}</p>`}
+      ${client ? `<p class="acard__who">${esc(a.client_name || "Cliente")}${a.client_id ? "" : " <small>invitado</small>"}</p>` : ""}
       <h3>${esc(a.service_name)}</h3>
-      ${client ? `<p class="acard__who">${avatar(a.client_name)}<span>${esc(a.client_name || "Cliente")}${a.client_id ? "" : " <small>invitado</small>"}</span></p>` : ""}
       <p class="acard__meta"><span>${esc(a.barber_name)}</span>${a.price != null || a.extras?.length ? `<b>${money(apptTotal(a))}</b>` : ""}${a.payment_method ? `<span>${esc(a.payment_method)}</span>` : ""}${a.extras?.length ? `<span>+ ${esc(extrasText(a.extras))}</span>` : ""}</p>
+      ${stepper(a, "data-qst")}
       <div class="acard__acts">
-        ${a.status === "pendiente" ? `<button class="btn btn--sm" data-qst="confirmada">Confirmar</button>` : ""}
-        ${a.status === "confirmada" && started ? `<button class="btn btn--sm" data-qst="completada">Completar</button>` : ""}
+        ${stepActions(a, "data-qst")}
         ${a.client_phone ? `<a class="acard__wa" href="${waLinkTo(a.client_phone)}" target="_blank" rel="noopener" aria-label="WhatsApp de ${esc(a.client_name)}">${WA_ICON}</a>` : ""}
       </div>
     </div></article>`;
@@ -55,7 +68,7 @@ function bindAppts(root) {
     busy(qs, async () => {
       const { error } = await sb.rpc("admin_set_status", { p_id: r.dataset.appt, p_status: qs.dataset.qst, p_reason: null });
       if (error) return toast(friendly(error), "err");
-      toast(`Cita ${STATUS[qs.dataset.qst].toLowerCase()}.`); refresh();
+      toast(stToast(qs.dataset.qst)); refresh();
     });
   };
   root.addEventListener("click", open); root.addEventListener("keydown", open);
@@ -194,13 +207,13 @@ async function vAgenda(_, query) {
 
   let qa = sb.from("appointments").select("*").gte("starts_at", rs).lt("starts_at", re).order("starts_at");
   if (barberF) qa = qa.eq("barber_id", barberF);
-  if (statusF === "activas") qa = qa.neq("status", "cancelada"); else if (statusF !== "todas") qa = qa.eq("status", statusF);
+  if (statusF === "activas") qa = qa.in("status", LIVE); else if (statusF !== "todas") qa = qa.eq("status", statusF);
   let qt = sb.from("time_off").select("*").lt("starts_at", re).gt("ends_at", rs);
   const wk = mondayOf(date);
   const [appts, offs, weekAppts] = await Promise.all([q(qa), q(qt),
-    q(sb.from("appointments").select("starts_at").neq("status", "cancelada").gte("starts_at", toIso(wk, "00:00")).lt("starts_at", toIso(addDays(wk, 7), "00:00")))]);
+    q(sb.from("appointments").select("starts_at").in("status", LIVE).gte("starts_at", toIso(wk, "00:00")).lt("starts_at", toIso(addDays(wk, 7), "00:00")))]);
   const dayCount = (d) => weekAppts.filter((a) => ymd(new Date(a.starts_at)) === d).length;
-  const live = appts.filter((a) => a.status !== "cancelada");
+  const live = appts.filter((a) => LIVE.includes(a.status));
   const nextA = live.find((a) => new Date(a.starts_at) > new Date());
   const offsF = offs.filter((t) => !barberF || !t.barber_id || t.barber_id === barberF);
 
@@ -260,7 +273,7 @@ async function vAgenda(_, query) {
       <input type="date" id="agDate" value="${date}" aria-label="Ir a fecha">
       <div class="seg" role="group" aria-label="Vista"><a href="${hrefWith("#/admin/agenda", query, { vista: "dia" })}" class="${mode === "dia" ? "is-on" : ""}">Día</a><a href="${hrefWith("#/admin/agenda", query, { vista: "semana" })}" class="${mode === "semana" ? "is-on" : ""}">Semana</a></div>
       <select id="agBarber" aria-label="Barbero"><option value="">Todos los barberos</option>${State.barbers.filter((b) => b.active && !b.deleted_at).map((b) => `<option value="${b.id}" ${b.id === barberF ? "selected" : ""}>${esc(b.name)}</option>`).join("")}</select>
-      <select id="agStatus" aria-label="Estado">${[["activas", "Activas"], ["pendiente", "Pendientes"], ["confirmada", "Confirmadas"], ["completada", "Completadas"], ["cancelada", "Canceladas"], ["todas", "Todas"]].map(([k, v]) => `<option value="${k}" ${k === statusF ? "selected" : ""}>${v}</option>`).join("")}</select>
+      <select id="agStatus" aria-label="Estado">${[["activas", "Activas"], ["pendiente", "Pendientes"], ["confirmada", "Confirmadas"], ["en_proceso", "En silla"], ["completada", "Completadas"], ["no_asistio", "No vinieron"], ["cancelada", "Canceladas"], ["todas", "Todas"]].map(([k, v]) => `<option value="${k}" ${k === statusF ? "selected" : ""}>${v}</option>`).join("")}</select>
     </div>
     <div class="agenda"><div class="agenda__grid" style="grid-template-columns:56px repeat(${cols.length}, minmax(${mode === "dia" ? 170 : 130}px, 1fr))">
       <div class="agenda__hcell" style="min-width:56px"></div>
@@ -371,7 +384,7 @@ function apptEditor({ appt = null, date = todayYmd(), time = "", barberId = "", 
 async function apptDetail(id) {
   const a = await q(sb.from("appointments").select("*").eq("id", id).single()).catch((e) => { toast(friendly(e), "err"); });
   if (!a) return;
-  const active = ["pendiente", "confirmada"].includes(a.status), started = new Date(a.starts_at) <= new Date();
+  const active = ["pendiente", "confirmada"].includes(a.status);
   const m = modal(`<h2 class="modal__t">${esc(a.client_name || "Cliente")} ${statusBadge(a.status)}</h2>
     <dl class="kv">
       <dt>Servicio</dt><dd>${esc(a.service_name)} · ${durLabel(a.duration_min)}</dd>
@@ -387,10 +400,9 @@ async function apptDetail(id) {
       ${a.status === "pendiente" && a.pending_expires_at ? `<dt>Se libera</dt><dd>${esc(fmtDateTime(a.pending_expires_at))} si no se confirma</dd>` : ""}
       ${a.cancel_reason ? `<dt>Cancelación</dt><dd>${esc(a.cancel_reason)}${a.cancelled_at ? ` · ${esc(fmtDateTime(a.cancelled_at))}` : ""}</dd>` : ""}
     </dl>
+    ${stepper(a, "data-st")}
     <div class="row" style="margin:18px 0">
-      ${a.status === "pendiente" ? `<button class="btn btn--sm" data-st="confirmada">Confirmar</button>` : ""}
-      ${a.status === "confirmada" ? `<button class="btn btn--sm" data-st="completada" ${started ? "" : "disabled title='Disponible cuando la cita empiece'"}>Marcar completada</button><button class="btn btn--sm btn--ghost" data-st="pendiente">Volver a pendiente</button>` : ""}
-      ${a.status === "completada" ? `<button class="btn btn--sm btn--ghost" data-st="confirmada">Deshacer completada</button>` : ""}
+      ${stepActions(a, "data-st")}
       ${active ? `<button class="btn btn--sm btn--ghost" data-edit>Reprogramar / editar</button><button class="btn btn--sm btn--ghost btn--danger-text" data-st="cancelada">Cancelar cita</button>` : ""}
       ${a.status === "cancelada" ? `<button class="btn btn--sm btn--ghost btn--danger-text" data-del>Eliminar definitivamente</button>` : ""}
     </div>
@@ -410,7 +422,7 @@ async function apptDetail(id) {
     busy(b, async () => {
       const { error } = await sb.rpc("admin_set_status", { p_id: a.id, p_status: b.dataset.st, p_reason: reason });
       if (error) return toast(friendly(error), "err");
-      m.close(); toast(`Cita ${STATUS[b.dataset.st].toLowerCase()}.`); refresh();
+      m.close(); toast(stToast(b.dataset.st)); refresh();
     });
   });
   $("#notesForm", m.el).addEventListener("submit", (e) => {
@@ -479,9 +491,11 @@ function bindOffs(root, list) {
 async function vCitas(_, query) {
   const page = Math.max(0, Number(query.pag || 0)), size = 50, nowIso = new Date().toISOString();
   const tab = query.estado || "proximas";
-  const upcoming = (p) => p.in("status", ["pendiente", "confirmada"]).gte("starts_at", nowIso);
+  const upcoming = (p) => p.in("status", OPEN).gte("ends_at", nowIso);
+  const unclosed = (p) => p.in("status", OPEN).lt("ends_at", nowIso);   // ya pasó la hora y nadie dijo si vino
   let qa = sb.from("appointments").select("*", { count: "exact" });
   if (tab === "proximas") qa = upcoming(qa);
+  else if (tab === "sincerrar") qa = unclosed(qa);
   else if (tab !== "todas") qa = qa.eq("status", tab);
   if (query.barbero) qa = qa.eq("barber_id", query.barbero);
   if (query.desde) qa = qa.gte("starts_at", toIso(query.desde, "00:00"));
@@ -489,23 +503,20 @@ async function vCitas(_, query) {
   if (query.q && like(query.q)) { const t = like(query.q); qa = qa.or(`client_name.ilike.%${t}%,client_phone.ilike.%${t}%,client_email.ilike.%${t}%,service_name.ilike.%${t}%`); }
   qa = qa.order("starts_at", { ascending: query.orden ? query.orden === "asc" : tab === "proximas" || tab === "pendiente" }).range(page * size, page * size + size - 1);
   const head = (st) => sb.from("appointments").select("id", { count: "exact", head: true }).eq("status", st);
-  const [{ data, count, error }, cUp, cPend, cDone, cCan] = await Promise.all([qa,
-    upcoming(sb.from("appointments").select("id", { count: "exact", head: true })), head("pendiente"), head("completada"), head("cancelada")]);
+  const all = () => sb.from("appointments").select("id", { count: "exact", head: true });
+  const [{ data, count, error }, cUp, cOpen, cPend, cDone, cNo, cCan] = await Promise.all([qa, upcoming(all()), unclosed(all()), head("pendiente"), head("completada"), head("no_asistio"), head("cancelada")]);
   if (error) throw error;
-  const tabs = [["proximas", "Próximas", cUp.count], ["pendiente", "Por confirmar", cPend.count], ["completada", "Completadas", cDone.count], ["cancelada", "Canceladas", cCan.count], ["todas", "Todas", null]];
+  const tabs = [["proximas", "Próximas", cUp.count], ["pendiente", "Por confirmar", cPend.count], ["sincerrar", "Sin cerrar", cOpen.count], ["completada", "Completadas", cDone.count], ["no_asistio", "No vinieron", cNo.count], ["cancelada", "Canceladas", cCan.count], ["todas", "Todas", null]];
   const filtered = query.q || query.barbero || query.desde || query.hasta;
-  const next = tab === "proximas" && !filtered && !page ? data[0] : null;
-  const rest = next ? data.slice(1) : data;
+  const next = tab === "proximas" && !filtered && !page ? data.find((a) => new Date(a.starts_at) > new Date()) : null;
+  const rest = data;
   const days = [...new Set(rest.map((a) => ymd(new Date(a.starts_at))))];
   const mins = next ? Math.round((new Date(next.starts_at) - new Date()) / 60000) : 0;
   const html = shell("citas", "Citas", `<button class="btn btn--sm" id="newAppt" type="button">Nueva cita</button>`, `
-    <nav class="ctabs" aria-label="Estado">${tabs.map(([k, v, n]) => `<a href="${hrefWith("#/admin/citas", {}, { estado: k === "proximas" ? "" : k })}" class="${k === tab ? "is-on" : ""}">${v}${n != null ? `<b>${n}</b>` : ""}</a>`).join("")}</nav>
-    ${next ? `<section class="nextup" data-appt="${next.id}" tabindex="0" style="--pic:url('${esc(new URL(apptPhoto(next), document.baseURI).href)}')">
-      <p class="nextup__k">Siguiente cita · ${mins < 60 ? `en ${Math.max(mins, 0)} min` : mins < 1440 ? `en ${Math.round(mins / 60)} h` : esc(fmtDate(next.starts_at))}</p>
-      <h2>${fmtTime(next.starts_at)} · ${esc(next.client_name || "Cliente")}</h2>
-      <p>${esc(next.service_name)} con ${esc(next.barber_name)}${next.price != null ? ` · <b>${money(apptTotal(next))}</b>` : ""}</p>
-      <div class="acard__acts">${next.status === "pendiente" ? `<button class="btn btn--sm btn--light" data-qst="confirmada">Confirmar</button>` : ""}${next.client_phone ? `<a class="btn btn--sm btn--light" href="${waLinkTo(next.client_phone)}" target="_blank" rel="noopener">WhatsApp</a>` : ""}</div>
-    </section>` : ""}
+    <nav class="ctabs" aria-label="Estado">${tabs.map(([k, v, n]) => `<a href="${hrefWith("#/admin/citas", {}, { estado: k === "proximas" ? "" : k })}" class="${k === tab ? "is-on" : k === "sincerrar" && n ? "is-warn" : ""}">${v}${n != null ? `<b>${n}</b>` : ""}</a>`).join("")}</nav>
+    ${next ? `<section class="nextbar" data-appt="${next.id}" tabindex="0"><img src="${esc(apptPhoto(next))}" alt="">
+      <span><small>Próxima cita · ${mins < 60 ? `en ${Math.max(mins, 0)} min` : mins < 1440 ? `en ${Math.round(mins / 60)} h` : esc(fmtDate(next.starts_at))}</small><b>${fmtTime(next.starts_at)} · ${esc(next.client_name || "Cliente")}</b></span>
+      <em>${esc(next.service_name)} · ${esc(next.barber_name)}</em></section>` : ""}
     <form class="toolbar" id="fForm">
       <input type="hidden" name="estado" value="${esc(query.estado || "")}">
       <input class="grow" type="search" name="q" value="${esc(query.q || "")}" placeholder="Buscar cliente, celular, correo o servicio">
@@ -519,7 +530,7 @@ async function vCitas(_, query) {
     ${data.length ? `<div class="pager"><span>${page * size + 1}–${page * size + data.length} de ${count}</span><span class="row">
       ${page > 0 ? `<a class="btn btn--sm btn--ghost" href="${hrefWith("#/admin/citas", query, { pag: page - 1 })}">Anterior</a>` : ""}
       ${(page + 1) * size < count ? `<a class="btn btn--sm btn--ghost" href="${hrefWith("#/admin/citas", query, { pag: page + 1 })}">Siguiente</a>` : ""}</span></div>`
-    : emptyState(tab === "proximas" && !filtered ? "No hay citas próximas." : "No hay citas con esos filtros.")}`);
+    : emptyState(tab === "sincerrar" && !filtered ? "Todas las citas están al día." : tab === "proximas" && !filtered ? "No hay citas próximas." : "No hay citas con esos filtros.")}`);
   const mount = () => {
     $("#newAppt").addEventListener("click", () => apptEditor({}));
     $("#fForm").addEventListener("submit", (e) => { e.preventDefault(); go(hrefWith("#/admin/citas", {}, formData(e.target))); });
@@ -840,7 +851,7 @@ async function vCliente(id) {
     <section class="uhero">${avatar(p.full_name || p.email)}<div><h2>${esc(p.full_name || p.email)}</h2><p>${esc([p.phone, p.email].filter(Boolean).join(" · ") || "Sin contacto")}</p><small>Cliente desde ${esc(fmtDate(p.created_at, { weekday: undefined, year: "numeric" }))}</small></div>
       <div class="uhero__acts"><button class="btn btn--sm btn--light" id="newAppt" type="button">Nueva cita</button>${p.phone ? `<a class="btn btn--sm btn--light" href="${waLinkTo(p.phone)}" target="_blank" rel="noopener">WhatsApp</a><a class="btn btn--sm btn--light" href="tel:${esc(p.phone.replace(/[^\d+]/g, ""))}">Llamar</a>` : ""}${p.email ? `<a class="btn btn--sm btn--light" href="mailto:${esc(p.email)}">Correo</a>` : ""}</div></section>
     <div class="kpis">
-      <div class="kpi"><span>Reservas</span><strong>${appts.length}</strong><small>${appts.filter((a) => a.status === "cancelada").length} canceladas</small></div>
+      <div class="kpi"><span>Reservas</span><strong>${appts.length}</strong><small>${appts.filter((a) => a.status === "cancelada").length} canceladas · ${appts.filter((a) => a.status === "no_asistio").length} no vino</small></div>
       <div class="kpi"><span>Atendidas</span><strong>${done.length}</strong><small>${done[0] ? `última: ${esc(fmtDate(done[0].starts_at, { weekday: undefined }))}` : "aún sin visitas"}</small></div>
       <div class="kpi"><span>Ha pagado</span><strong>${money(done.reduce((t, a) => t + apptTotal(a), 0))}</strong><small>en citas atendidas</small></div>
       <div class="kpi"><span>Le gusta</span><strong class="kpi__txt">${esc(favS || "—")}</strong><small>${favB ? `con ${esc(favB)}` : "aún sin datos"}</small></div>
@@ -1033,7 +1044,7 @@ async function vEstadisticas(_, query) {
       <div class="kpi"><span>Ingresos</span><strong>${money(ingresos)}</strong><small>${of("ingreso").length} registro(s)</small></div>
       <div class="kpi"><span>Gastos</span><strong>${money(gastos)}</strong><small>${of("gasto").length} registro(s)</small></div>
       <div class="kpi"><span>Balance neto</span><strong>${signed(ingresos - gastos)}</strong><small>ingresos − gastos</small></div>
-      <div class="kpi"><span>Citas completadas</span><strong>${st ? st.completadas : "—"}</strong><small>${st ? `${st.total - st.canceladas - st.completadas} por atender · ${st.canceladas} canceladas` : "rango muy largo"}</small></div>
+      <div class="kpi"><span>Citas completadas</span><strong>${st ? st.completadas : "—"}</strong><small>${st ? `${st.total - st.canceladas - st.completadas - st.no_asistio} por atender · ${st.no_asistio} no vinieron · ${st.canceladas} canceladas` : "rango muy largo"}</small></div>
     </div>
     <div class="card chart-card"><h2>Ingresos ${byMonth ? "por mes" : "por día"}</h2>
       ${ingresos ? `<div class="vchart" role="img" aria-label="Ingresos ${byMonth ? "por mes" : "por día"}; máximo ${money(Math.max(...series.map(([, v]) => v)))}. El detalle está en la tabla de movimientos.">

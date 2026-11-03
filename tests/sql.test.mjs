@@ -328,4 +328,29 @@ const [{ admin_stats: st10 }] = await as(U.admin, `select admin_stats(current_da
 assert.ok(st10.por_servicio.every((x) => !x.nombre.includes(" + ")));
 ok("estadísticas: cada servicio de la visita cuenta por separado");
 
+console.log("Migración 11 (seguimiento de la cita)");
+const m11 = readFileSync(new URL("../supabase/11_estados_cita.sql", import.meta.url), "utf8");
+await db.exec(m11); await db.exec(m11);
+const st11 = `${d3}T15:30:00-05:00`;
+const [{ book_cart: [c11] }] = await as(U.beto, `select book_cart($1::uuid[], $2, $3)`, [[barba.id], b1.id, st11]);
+await fails(as(U.admin, `select admin_set_status($1, 'no_asistio')`, [c11]), "CITA_FUTURA");
+await fails(as(U.admin, `select admin_set_status($1, 'volando')`, [c11]), "TRANSICION_INVALIDA");
+await as(U.admin, `select admin_set_status($1, 'en_proceso')`, [c11]);
+await fails(as(U.ana, `select book_cart($1::uuid[], $2, $3)`, [[barba.id], b1.id, st11]), "HORARIO_OCUPADO|BARBERO_NO_DISPONIBLE");
+ok("estados: en la silla ocupa el horario; 'no vino' no se permite antes de la hora");
+const inc11 = () => as(U.admin, `select amount from finance_entries where appointment_id = $1`, [c11]);
+assert.equal((await inc11()).length, 0);
+await as(U.admin, `select admin_set_status($1, 'completada')`, [c11]);
+assert.equal((await inc11()).length, 1);
+ok("estados: en la silla no suma; al completar (aunque llegó antes de su hora) sí suma a finanzas");
+await db.query(`update appointments set starts_at = now() - interval '3 hours', ends_at = now() - interval '145 min' where id = $1`, [c11]);
+await as(U.admin, `select admin_set_status($1, 'no_asistio')`, [c11]);
+assert.equal((await inc11()).length, 0);
+const [{ admin_stats: st11b }] = await as(U.admin, `select admin_stats(current_date - 1, current_date + 3)`);
+assert.ok(st11b.no_asistio >= 1);
+await as(U.admin, `select admin_set_status($1, 'confirmada')`, [c11]);
+await as(U.admin, `select admin_set_status($1, 'cancelada')`, [c11]);
+await fails(as(U.admin, `select admin_set_status($1, 'confirmada')`, [c11]), "TRANSICION_INVALIDA");
+ok("estados: 'no vino' quita el ingreso y se puede corregir; una cancelada no vuelve");
+
 console.log(`\n${passed} pruebas OK`);

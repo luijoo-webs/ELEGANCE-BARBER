@@ -1,6 +1,6 @@
 /* Núcleo compartido: conexión, estado, utilidades de fecha (America/Bogota), errores y UI básica. */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js?v=20261103b";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js?v=20261103c";
 
 export const CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 export const sb = CONFIGURED
@@ -86,7 +86,7 @@ export const minutes = (t) => { const [h, m] = String(t).split(":").map(Number);
 export const fromMinutes = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 export const shortTime = (t) => String(t).slice(0, 5);
 
-export const STATUS = { pendiente: "Pendiente", confirmada: "Confirmada", cancelada: "Cancelada", completada: "Completada" };
+export const STATUS = { pendiente: "Pendiente", confirmada: "Confirmada", en_proceso: "En silla", completada: "Completada", no_asistio: "No vino", cancelada: "Cancelada" };
 export const statusBadge = (s) => `<span class="badge badge--${esc(s)}">${esc(STATUS[s] || s)}</span>`;
 
 /* ---------- Errores en español ---------- */
@@ -116,7 +116,7 @@ const ERRORS = {
   ESTADO_INVALIDO: "Estado no válido.",
   CLIENTE_REQUERIDO: "Escribe el nombre del cliente o elige uno registrado.",
   TRANSICION_INVALIDA: "Ese cambio de estado no está permitido.",
-  CITA_FUTURA: "Solo puedes marcar como completada una cita que ya empezó.",
+  CITA_FUTURA: "Eso solo se puede marcar cuando ya pasó la hora de la cita.",
   RANGO_INVALIDO: "El rango de fechas no es válido (máximo un año)."
 };
 export function friendly(e) {

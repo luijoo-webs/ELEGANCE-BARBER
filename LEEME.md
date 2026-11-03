@@ -23,6 +23,7 @@ Mismo modelo de despliegue que La Percha: sitio estático (sin compilación) →
 | `supabase/07_carrito_y_correos.sql` | Un carrito (hasta 10 servicios seguidos) cuenta como una sola reserva para el límite; columnas y funciones para no mandar correos repetidos. Re-ejecutable. |
 | `supabase/08_programar_correos.sql` | Tarea cada 5 min (pg_cron) que llama a la función de correos. Solo en Supabase. |
 | `supabase/09_invitados.sql` | Reserva como invitado (sin cuenta, con nombre, celular y correo para confirmación y recordatorio). |
+| `supabase/11_estados_cita.sql` | Seguimiento de la cita: pendiente, confirmada, en silla, completada y "no vino". Solo completada suma a finanzas. |
 | `supabase/10_visita_unica.sql` | Una visita = una sola cita (35 min por todo), método de pago e ingreso automático al completar una cita. |
 | `supabase/functions/notificaciones/` | Edge Function: correo de confirmación al reservar y recordatorio 2 h antes, por Gmail. Necesita los secretos `SMTP_USER` y `SMTP_PASS`. |
 | `js/legal.js` | Términos, privacidad (Ley 1581), cookies y cancelación/reembolso (Ley 1480), en `#/legal/...`. |
@@ -56,7 +57,7 @@ Mientras no haya horario general, servicios y barberos activos, la web muestra �
 ## 3. Puesta en marcha (una vez)
 
 1. **Crear proyecto** en Supabase (región São Paulo recomendada para Colombia).
-2. **SQL Editor** → pegar y ejecutar `supabase/01_esquema.sql` completo. Luego `supabase/02_storage.sql`, `supabase/03_finanzas.sql`, `supabase/04_negocio_real.sql`, `supabase/05_adicionales.sql`, `supabase/06_carrito.sql`, `supabase/07_carrito_y_correos.sql`, `supabase/08_programar_correos.sql`, `supabase/09_invitados.sql` y `supabase/10_visita_unica.sql`. Desplegar `supabase/functions/notificaciones` (Edge Functions → Deploy) y en Edge Functions → Secrets crear `SMTP_USER` (Gmail de la barbería) y `SMTP_PASS` (contraseña de aplicación de Gmail).
+2. **SQL Editor** → pegar y ejecutar `supabase/01_esquema.sql` completo. Luego `supabase/02_storage.sql`, `supabase/03_finanzas.sql`, `supabase/04_negocio_real.sql`, `supabase/05_adicionales.sql`, `supabase/06_carrito.sql`, `supabase/07_carrito_y_correos.sql`, `supabase/08_programar_correos.sql`, `supabase/09_invitados.sql`, `supabase/10_visita_unica.sql` y `supabase/11_estados_cita.sql`. Desplegar `supabase/functions/notificaciones` (Edge Functions → Deploy) y en Edge Functions → Secrets crear `SMTP_USER` (Gmail de la barbería) y `SMTP_PASS` (contraseña de aplicación de Gmail).
    Los tres son re-ejecutables y no borran datos.
 3. **Project Settings → API**: copiar *Project URL* y la clave *anon / publishable* en `js/config.js`.
    ⚠️ Nunca pongas la `service_role` ni la contraseña de la base de datos en el código ni en Git.
@@ -119,7 +120,7 @@ La carpeta `tests/` no contiene secretos de producción (la cuenta admin que ves
 
 ```bash
 cd tests && npm install
-npm test          # 59 pruebas del esquema SQL (reservas, solapes, RLS, roles, estados, pendientes)
+npm test          # 62 pruebas del esquema SQL (reservas, solapes, RLS, roles, estados, pendientes)
 npm run dev       # web completa en http://127.0.0.1:5180 con un Supabase simulado sobre el mismo SQL
 ```
 El servidor local usa datos ficticios marcados “(prueba)” y una cuenta admin local definida en `tests/dev-server.mjs`. No implementa Storage (subida de fotos) ni Realtime.
