@@ -2,8 +2,8 @@
 import {
   sb, State, SITE_URL, $, esc, friendly, toast, loader, emptyState, busy, setMsg, formData, confirmDialog, modal,
   fmtDate, fmtTime, durLabel, priceLabel, statusBadge, ymd, loadProfile, waLink, consentChecks, consentMissing, logConsent
-} from "./core.js?v=20261102b";
-import { mountSlotPicker } from "./public.js?v=20261102b";
+} from "./core.js?v=20261102c";
+import { mountSlotPicker } from "./public.js?v=20261102c";
 
 const back = (q) => (q.volver === "reservar" ? "#/reservar" : "#/cuenta");
 const R = () => State.settings.reservas || {};
@@ -145,7 +145,7 @@ export async function viewAccount(sub, q, id) {
   if (sub === "reprogramar") return viewReschedule(id);
   return viewDashboard();
 }
-const Booking_hasDraft = () => { try { return !!JSON.parse(sessionStorage.getItem("eb_reserva"))?.serviceId; } catch { return false; } };
+const Booking_hasDraft = () => { try { return !!JSON.parse(sessionStorage.getItem("eb_reserva"))?.serviceIds?.length; } catch { return false; } };
 
 async function viewDashboard() {
   const p = State.profile || {};

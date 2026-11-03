@@ -230,4 +230,23 @@ await fails(as(U.ana, `select set_appointment_extras($1, '{"n":"X"}'::jsonb)`, [
 await fails(as(null, `select set_appointment_extras($1, '[]'::jsonb)`, [mine.id]), "permission denied");
 ok("adicionales: solo el dueño de la cita, cantidades 1–10, formato validado");
 
+console.log("Migración 06 (carrito)");
+const m6 = readFileSync(new URL("../supabase/06_carrito.sql", import.meta.url), "utf8");
+await db.exec(m6); await db.exec(m6);
+const [barba] = (await db.query(`select id from services where name = 'Barba'`)).rows;
+const at = (hhmm) => `${nextDay}T${hhmm}:00-05:00`;
+const [{ book_cart: cart }] = await as(U.admin, `select book_cart($1::uuid[], null, $2, 'nota', $3::jsonb)`, [[barba.id, barba.id], at("14:10"), JSON.stringify([{ n: "Soda", q: 1, p: 3000 }])]);
+const rows = (await db.query(`select barber_id, starts_at, ends_at, client_notes, extras from appointments where id = any($1) order by starts_at`, [cart])).rows;
+assert.equal(rows.length, 2); assert.equal(rows[0].barber_id, rows[1].barber_id);
+assert.equal(rows[0].ends_at.getTime(), rows[1].starts_at.getTime());
+assert.equal(rows[0].client_notes, "nota"); assert.equal(rows[1].client_notes, null);
+assert.deepEqual(rows[0].extras, [{ n: "Soda", q: 1, p: 3000 }]); assert.equal(rows[1].extras, null);
+ok("carrito: servicios seguidos con el mismo barbero, nota y adicionales en la primera cita");
+const before = (await db.query(`select count(*)::int n from appointments`)).rows[0].n;
+await fails(as(U.admin, `select book_cart($1::uuid[], $2, $3)`, [[barba.id, barba.id], b1.id, at("10:40")]), "HORARIO_OCUPADO|BARBERO_NO_DISPONIBLE");
+assert.equal((await db.query(`select count(*)::int n from appointments`)).rows[0].n, before);
+await fails(as(U.admin, `select book_cart('{}'::uuid[], null, $1)`, [at("16:00")]), "CARRITO_INVALIDO");
+await fails(as(null, `select book_cart($1::uuid[], null, $2)`, [[barba.id], at("16:00")]), "permission denied");
+ok("carrito: si un servicio choca no queda ninguna cita; vacío o sin sesión se rechaza");
+
 console.log(`\n${passed} pruebas OK`);

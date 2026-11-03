@@ -3,7 +3,7 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday,
   fmtDay, fmtTime, fmtDate, hhmm, ymd, friendly, toast, loader, emptyState, busy, scheduleByDay, barberWorkDays, waLink, setMsg,
   mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal
-} from "./core.js?v=20261102b";
+} from "./core.js?v=20261102c";
 
 const N = () => State.settings.negocio || {};
 const R = () => State.settings.reservas || {};
@@ -122,7 +122,7 @@ export function viewHome() {
       <div class="chips rv" role="group" aria-label="Filtrar productos"><button type="button" class="chip is-on" data-cat-filter="" aria-pressed="true">Todos</button>${Object.keys(SHOP).map((c) => `<button type="button" class="chip" data-cat-filter="${c}" aria-pressed="false">${c}</button>`).join("")}</div>
       <ul class="catalog">${Object.entries(SHOP).flatMap(([cat, items]) => items.map(([name, price, img]) => [cat, name, price, img])).map(([cat, name, price, img], k) => `<li class="rv" style="--i:${k % 4}" data-cat="${cat}"><div class="cat-card cat-card--shop">
         <figure class="cat-card__img"><img src="assets/tienda/${img}.jpg?v=2" alt="${esc(name)}" loading="lazy"><span class="cat-card__tag">${cat}</span></figure>
-        <div class="cat-card__body"><h4>${esc(name)}</h4><div class="cat-card__foot"><span class="cat-card__price">${money(price)}</span></div></div></div></li>`).join("")}</ul>
+        <div class="cat-card__body"><h4>${esc(name)}</h4><div class="cat-card__foot"><span class="cat-card__price">${money(price)}</span><button type="button" class="cart-add" data-cart-x="${esc(name)}" aria-label="Agregar ${esc(name)} al carrito">+ Agregar</button></div></div></div></li>`).join("")}</ul>
     </div>
   </section>
 
@@ -228,6 +228,54 @@ const SHOP = {
     ["Jugo del Valle", 3500, "jugo-del-valle"], ["Agua personal", 2000, "agua"], ["Quatro pequeña", 2000, "quatro-pequena"], ["Speed Max", 2500, "speed-max"], ["Soda", 3000, "soda"]]
 };
 
+const SHOP_ITEMS = Object.values(SHOP).flat();
+const MAX_SVC = () => Number(R().max_reservas_activas ?? 3);   // cada servicio es una cita; el servidor limita las activas
+const cartSvcs = (b = Booking.get()) => (b.serviceIds || []).map((id) => activeServices().find((s) => s.id === id)).filter(Boolean);
+const extrasSum = (ex = {}) => SHOP_ITEMS.reduce((t, [n, p]) => t + (ex[n] || 0) * p, 0);
+export const cartCount = () => { const b = Booking.get(); return cartSvcs(b).length + Object.values(b.extras || {}).reduce((t, q) => t + q, 0); };
+
+function addService(id) {
+  const ids = cartSvcs().map((s) => s.id);
+  if (ids.includes(id)) return true;
+  if (ids.length >= MAX_SVC()) { toast(`Puedes reservar hasta ${MAX_SVC()} servicios a la vez.`, "err"); return false; }
+  Booking.set({ serviceIds: [...ids, id], start: null });
+  return true;
+}
+function addExtra(n, d) {
+  const ex = { ...(Booking.get().extras || {}) };
+  ex[n] = Math.min(10, Math.max(0, (ex[n] || 0) + d)); if (!ex[n]) delete ex[n];
+  Booking.set({ extras: ex });
+  return ex;
+}
+
+function cartHtml() {
+  const b = Booking.get(), svcs = cartSvcs(b), ex = b.extras || {};
+  const snacks = SHOP_ITEMS.filter(([n]) => ex[n]);
+  const total = svcs.reduce((t, s) => t + Number(s.price || 0), 0) + extrasSum(ex);
+  if (!svcs.length && !snacks.length) return `<p class="muted cart__empty">Tu carrito está vacío.</p><a class="btn btn--block" href="#/inicio/servicios" data-cart-close>Ver servicios</a>`;
+  return `<ul class="cart__list">
+    ${svcs.map((s) => `<li><span class="extras__name">${esc(s.name)}<small>${durLabel(s.duration_min)} · ${priceLabel(s.price)}</small></span><button type="button" class="cart__rm" data-cart-rm="${s.id}" aria-label="Quitar ${esc(s.name)}">×</button></li>`).join("")}
+    ${snacks.map(([n, p, img]) => `<li><span class="extras__pic"><img src="assets/tienda/${img}.jpg?v=2" alt=""></span><span class="extras__name">${esc(n)}<small>${money(p)}</small></span>
+      <span class="qty"><button type="button" data-cx="${esc(n)}" data-d="-1" aria-label="Quitar ${esc(n)}">−</button><b>${ex[n]}</b><button type="button" data-cx="${esc(n)}" data-d="1" aria-label="Agregar ${esc(n)}">+</button></span></li>`).join("")}
+  </ul>
+  <p class="cart__total"><span>Total</span><strong>${money(total)}</strong></p>
+  <p class="muted small">Se paga en la barbería, después del servicio.</p>
+  ${svcs.length ? `<a class="btn btn--lg btn--block" href="#/reservar" data-cart-close>Reservar · elegir barbero y hora</a>`
+    : `<p class="muted small">Agrega al menos un servicio para reservar; los snacks se entregan en tu cita.</p><a class="btn btn--block" href="#/inicio/servicios" data-cart-close>Ver servicios</a>`}`;
+}
+export function refreshCart() {
+  const n = cartCount();
+  document.querySelectorAll("[data-cart-n]").forEach((el) => { el.textContent = n; el.hidden = !n; });
+  const body = $("#cartBody"); if (body) body.innerHTML = cartHtml();
+}
+function toggleCart(open) {
+  const c = $("#cart"); if (!c) return;
+  c.hidden = !open; document.body.classList.toggle("no-scroll", open);
+  if (open) { refreshCart(); $(".drawer__x", c)?.focus(); }
+  else if (location.hash.startsWith("#/reservar")) window.dispatchEvent(new HashChangeEvent("hashchange"));   // la reserva toma los cambios del carrito
+}
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("#cart") && !$("#cart").hidden) toggleCart(false); });
+
 // Filtro del catálogo y elección de ruta (delegados: el inicio se vuelve a pintar en cada navegación).
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-cat-filter]");
@@ -236,6 +284,16 @@ document.addEventListener("click", (e) => {
     sec.querySelectorAll("[data-cat-filter]").forEach((x) => { x.classList.toggle("is-on", x === b); x.setAttribute("aria-pressed", x === b); });
     sec.querySelectorAll(".catalog > li").forEach((li) => { li.hidden = !!b.dataset.catFilter && li.dataset.cat !== b.dataset.catFilter; });
   }
+  if (e.target.closest("[data-cart-open]")) return toggleCart(true);
+  if (e.target.closest("[data-cart-close]")) toggleCart(false);
+  const cs = e.target.closest("[data-cart-svc]");
+  if (cs && addService(cs.dataset.cartSvc)) { refreshCart(); toast("Servicio agregado al carrito"); }
+  const cx = e.target.closest("[data-cart-x]");
+  if (cx) { addExtra(cx.dataset.cartX, 1); refreshCart(); toast(`${cx.dataset.cartX} agregado al carrito`); }
+  const rm = e.target.closest("[data-cart-rm]");
+  if (rm) { Booking.set({ serviceIds: cartSvcs().map((s) => s.id).filter((id) => id !== rm.dataset.cartRm), start: null }); refreshCart(); }
+  const cq = e.target.closest("[data-cx]");
+  if (cq) { addExtra(cq.dataset.cx, +cq.dataset.d); refreshCart(); }
   if (e.target.closest("[data-route-open]")) $("#routeDlg")?.showModal();
   const dlg = $("#routeDlg");
   if (dlg?.open && (e.target.closest("[data-route-close]") || e.target === dlg || e.target.closest(".route-opt"))) dlg.close();
@@ -256,19 +314,20 @@ function svcPhoto(s) {
 }
 
 function menuItem(s, k = 0, cat = "") {
-  return `<li class="rv" style="--i:${k % 4}" data-cat="${s.category_id || ""}"><a class="cat-card" href="#/reservar?servicio=${s.id}">
+  return `<li class="rv" style="--i:${k % 4}" data-cat="${s.category_id || ""}"><div class="cat-card">
     <figure class="cat-card__img"><img src="${esc(svcPhoto(s))}" alt="" loading="lazy">${cat ? `<span class="cat-card__tag">${esc(cat)}</span>` : ""}<span class="cat-card__dur">${durLabel(s.duration_min)}</span></figure>
     <div class="cat-card__body">
       <h4>${esc(s.name)}</h4>
       ${s.description ? `<p>${esc(s.description)}</p>` : ""}
-      <div class="cat-card__foot"><span class="cat-card__price${s.price == null ? " is-pending" : ""}">${priceLabel(s.price)}</span><span class="cat-card__go">Reservar</span></div>
-    </div></a></li>`;
+      <div class="cat-card__foot"><span class="cat-card__price${s.price == null ? " is-pending" : ""}">${priceLabel(s.price)}</span>
+        <span class="cat-card__acts"><button type="button" class="cart-add" data-cart-svc="${s.id}" aria-label="Agregar ${esc(s.name)} al carrito">+ Agregar</button><a class="cat-card__go" href="#/reservar?servicio=${s.id}">Reservar</a></span></div>
+    </div></div></li>`;
 }
 
 /* ===================== SELECTOR SEMANAL DE HORARIOS =====================
    Muestra los 7 días de la semana, permite ir a semanas anteriores/posteriores
    y volver a la actual. Los horarios salen de get_availability (servidor). */
-export function mountSlotPicker(el, { serviceId, barberId = null, date = null, selected = null, onPick }) {
+export function mountSlotPicker(el, { serviceId, barberId = null, date = null, selected = null, chain = [], onPick }) {
   const today = todayYmd();
   const st = { week: mondayOf(date || today), day: date || null, slots: [], loading: true, error: null, seq: 0 };
 
@@ -279,7 +338,10 @@ export function mountSlotPicker(el, { serviceId, barberId = null, date = null, s
     if (seq !== st.seq) return;
     st.loading = false;
     if (error) { st.error = friendly(error); st.slots = []; }
-    else st.slots = data;
+    else {
+      const has = new Set(data.map((s) => `${s.barber_id}|${new Date(s.slot_start).getTime()}`));
+      st.slots = data.filter((s) => chain.every((ms) => has.has(`${s.barber_id}|${new Date(s.slot_start).getTime() + ms}`)));
+    }
     const days = byDay();
     if (!st.day || st.day < st.week || st.day > addDays(st.week, 6) || !days[st.day]?.length) {
       st.day = Object.keys(days).sort().find((d) => days[d].length) || (today >= st.week && today <= addDays(st.week, 6) ? today : st.week);
@@ -337,7 +399,7 @@ export function mountSlotPicker(el, { serviceId, barberId = null, date = null, s
     if (day) { st.day = day.dataset.day; return render(); }
     if (e.target.closest("[data-retry]")) return load();
     const slot = e.target.closest("[data-slot]");
-    if (slot) { selected = slot.dataset.slot; render(); onPick({ start: slot.dataset.slot, barberId: barberId ? slot.dataset.slotBarber : null }); }
+    if (slot) { selected = slot.dataset.slot; render(); onPick({ start: slot.dataset.slot, barberId: barberId ? slot.dataset.slotBarber : null, slotBarber: slot.dataset.slotBarber }); }
   });
   load();
   return { reload: load };
@@ -354,7 +416,7 @@ export const Booking = {
 };
 
 export function viewBooking(query) {
-  if (query.servicio) Booking.set({ serviceId: query.servicio, start: null });
+  if (query.servicio) addService(query.servicio);
   if (query.barbero) Booking.set({ barberId: query.barbero, start: null });
   return `<section class="book">
     <header class="book__head"><div class="wrap"><p class="label">Reserva en línea</p><h1>Agenda tu cita</h1><ol class="progress" id="progress" aria-label="Progreso"></ol></div></header>
@@ -375,7 +437,7 @@ export function mountBooking() {
 
   function validState() {
     const b = Booking.get();
-    if (b.serviceId && !activeServices().some((s) => s.id === b.serviceId)) Booking.set({ serviceId: null, start: null });
+    if ((b.serviceIds || []).length !== cartSvcs(b).length) Booking.set({ serviceIds: cartSvcs(b).map((s) => s.id), start: null });
     if (b.barberId && b.barberId !== "any" && !activeBarbers().some((x) => x.id === b.barberId)) Booking.set({ barberId: null, start: null });
     if (b.barberId === "any" && !anyEnabled) Booking.set({ barberId: null, start: null });
     if (b.start && new Date(b.start) < new Date()) Booking.set({ start: null });
@@ -384,7 +446,9 @@ export function mountBooking() {
 
   function render() {
     const b = validState();
-    const svc = activeServices().find((s) => s.id === b.serviceId);
+    const svcs = cartSvcs(b), svc = svcs[0];
+    const svcName = svcs.map((s) => s.name).join(" + "), svcMin = svcs.reduce((t, s) => t + s.duration_min, 0);
+    const total = svcs.reduce((t, s) => t + Number(s.price || 0), 0) + extrasSum(b.extras);
     const barber = activeBarbers().find((x) => x.id === b.barberId);
     const services = activeServices();
     const barbers = activeBarbers();
@@ -397,7 +461,7 @@ export function mountBooking() {
     const pending = done.indexOf(false) + 1 || 4;
     const cur = open && open <= pending ? open : pending;
     const barberLabel = b.barberId === "any" ? "Cualquier barbero" : barber ? barber.name : "";
-    const values = [svc?.name, barberLabel, b.start ? `${cap(fmtDay(ymd(new Date(b.start)), { weekday: "short", day: "numeric", month: "short" }))} · ${fmtTime(b.start)}` : ""];
+    const values = [svcName, barberLabel, b.start ? `${cap(fmtDay(ymd(new Date(b.start)), { weekday: "short", day: "numeric", month: "short" }))} · ${fmtTime(b.start)}` : ""];
 
     progress.innerHTML = STEPS.map((t, i) => `<li class="${i + 1 === cur ? "is-cur" : i < 3 && done[i] ? "is-done" : ""}"${i + 1 === cur ? ' aria-current="step"' : ""}><span>${i + 1}</span>${t}</li>`).join("");
 
@@ -411,11 +475,13 @@ export function mountBooking() {
 
     steps.innerHTML =
       step(1, () => `<div class="svc-cards">${services.map((s) => `
-        <button type="button" class="svc-card${s.id === b.serviceId ? " is-sel" : ""}" data-svc="${s.id}" aria-pressed="${s.id === b.serviceId}">
+        <button type="button" class="svc-card${svcs.includes(s) ? " is-sel" : ""}" data-svc="${s.id}" aria-pressed="${svcs.includes(s)}">
           ${thumb(svcPhoto(s), s.name, "svc-card__img")}
           <span class="svc-card__body"><strong>${esc(s.name)}</strong>${s.description ? `<small>${esc(s.description)}</small>` : ""}
             <span class="svc-card__meta"><span>${durLabel(s.duration_min)}</span><span class="${s.price == null ? "is-pending" : ""}">${priceLabel(s.price)}</span></span></span>
-        </button>`).join("")}</div>`) +
+        </button>`).join("")}</div>
+        <p class="muted small" style="margin-top:12px">Puedes elegir hasta ${MAX_SVC()} servicios; se hacen uno tras otro con el mismo barbero.</p>
+        ${svc ? `<button type="button" class="btn" data-next>Continuar${svcs.length > 1 ? ` con ${svcs.length} servicios` : ""}</button>` : ""}`) +
       step(2, () => `<div class="barber-cards">
         ${anyEnabled ? `<button type="button" class="barber-card barber-card--any${b.barberId === "any" ? " is-sel" : ""}" data-barber="any" aria-pressed="${b.barberId === "any"}">
           <span class="barber-card__img"><span aria-hidden="true">—</span></span><span class="barber-card__body"><strong>Cualquier barbero</strong><small>Te asignamos el primero disponible</small></span></button>` : ""}
@@ -429,25 +495,27 @@ export function mountBooking() {
     summary.innerHTML = `<div class="ticket">
       ${svc ? `<img class="ticket__img" src="${esc(svcPhoto(svc))}" alt="">` : ""}
       <p class="label">Tu reserva</p>
-      <h2>${svc ? esc(svc.name) : "Elige un servicio"}</h2>
+      <h2>${svc ? esc(svcName) : "Elige un servicio"}</h2>
       <dl class="sum">
         <div><dt>Barbero</dt><dd>${barberLabel ? esc(barberLabel) : "—"}</dd></div>
         <div><dt>Fecha</dt><dd>${b.start ? esc(cap(fmtDate(b.start))) : "—"}</dd></div>
         <div><dt>Hora</dt><dd>${b.start ? fmtTime(b.start) : "—"}</dd></div>
-        <div><dt>Duración</dt><dd>${svc ? durLabel(svc.duration_min) : "—"}</dd></div>
-        <div class="sum__total"><dt>Precio</dt><dd>${svc ? priceLabel(svc.price) : "—"}</dd></div>
+        <div><dt>Duración</dt><dd>${svc ? durLabel(svcMin) : "—"}</dd></div>
+        ${extrasSum(b.extras) ? `<div><dt>Adicionales</dt><dd>${money(extrasSum(b.extras))}</dd></div>` : ""}
+        <div class="sum__total"><dt>Total</dt><dd>${svc ? (svcs.some((s) => s.price == null) ? priceLabel(null) : money(total)) : "—"}</dd></div>
       </dl>
       <p class="ticket__note">Pagas en la barbería. Puedes cancelar o reprogramar hasta ${Number(R().cancelacion_min_horas ?? 2)} h antes desde tu cuenta.</p>
       ${N().direccion ? `<p class="ticket__note">${esc(N().direccion)}</p>` : ""}</div>`;
 
     bar.hidden = !svc;
-    bar.innerHTML = svc ? `<div><strong>${esc(svc.name)}</strong><small>${esc([barberLabel, values[2]].filter(Boolean).join(" · ") || durLabel(svc.duration_min))}</small></div>
+    bar.innerHTML = svc ? `<div><strong>${esc(svcName)}</strong><small>${esc([barberLabel, values[2]].filter(Boolean).join(" · ") || durLabel(svcMin))}</small></div>
       <span class="book-bar__step">Paso ${cur} de 4</span>` : "";
 
     if (cur === 3) mountSlotPicker($("#picker"), {
       serviceId: svc.id, barberId: b.barberId === "any" ? null : b.barberId,
       date: b.start ? ymd(new Date(b.start)) : null, selected: b.start,
-      onPick: ({ start }) => { Booking.set({ start }); go(null); }
+      chain: svcs.slice(0, -1).map((_, i) => svcs.slice(0, i + 1).reduce((t, s) => t + s.duration_min, 0) * 60000),
+      onPick: ({ start, slotBarber }) => { Booking.set({ start, slotBarber }); go(null); }
     });
   }
 
@@ -472,8 +540,7 @@ export function mountBooking() {
   }
 
   // Adicionales: {nombre: cantidad} en la reserva guardada; se actualiza en el sitio para no borrar lo que ya se escribió.
-  const SHOP_ITEMS = Object.values(SHOP).flat();
-  const exTotal = (ex) => { const t = SHOP_ITEMS.reduce((s, [n, p]) => s + (ex[n] || 0) * p, 0); return t ? `Adicionales: <strong>${money(t)}</strong> · se pagan en la barbería` : ""; };
+  const exTotal = (ex) => { const t = extrasSum(ex); return t ? `Adicionales: <strong>${money(t)}</strong> · se pagan en la barbería` : ""; };
   function extrasPicker(ex) {
     return `<details class="extras" ${Object.keys(ex).length ? "open" : ""}><summary>¿Deseas algún adicional? <span class="muted small">Snacks y bebidas para después del corte</span></summary>
       <ul class="extras__list">${SHOP_ITEMS.map(([n, p, img]) => `<li><span class="extras__pic"><img src="assets/tienda/${img}.jpg?v=2" alt="" loading="lazy"></span><span class="extras__name">${esc(n)}<small>${money(p)}</small></span>
@@ -484,16 +551,23 @@ export function mountBooking() {
   steps.addEventListener("click", (e) => {
     const x = e.target.closest("[data-x]");
     if (x) {
-      const ex = { ...(Booking.get().extras || {}) }, n = x.dataset.x, li = x.closest("li");
-      ex[n] = Math.min(10, Math.max(0, (ex[n] || 0) + +x.dataset.d)); if (!ex[n]) delete ex[n];
-      Booking.set({ extras: ex });
+      const n = x.dataset.x, li = x.closest("li"), ex = addExtra(n, +x.dataset.d);
       $("b", li).textContent = ex[n] || 0; $("[data-d='-1']", li).disabled = !ex[n]; $("#exTotal").innerHTML = exTotal(ex);
+      refreshCart();
+      const tot = $(".sum__total dd", summary), b = Booking.get();   // solo el total: re-dibujar borraría lo escrito en el formulario
+      if (tot && !cartSvcs(b).some((s) => s.price == null)) tot.textContent = money(cartSvcs(b).reduce((t, s) => t + Number(s.price), 0) + extrasSum(b.extras));
       return;
     }
     const o = e.target.closest("[data-open]");
     if (o) return go(+o.dataset.open);
+    if (e.target.closest("[data-next]")) return go(null);
     const s = e.target.closest("[data-svc]");
-    if (s) { Booking.set({ serviceId: s.dataset.svc, start: null }); return go(null); }
+    if (s) {
+      const ids = cartSvcs().map((x) => x.id), id = s.dataset.svc;
+      if (ids.includes(id)) Booking.set({ serviceIds: ids.filter((x) => x !== id), start: null });
+      else if (!addService(id)) return;
+      refreshCart(); return go(1);
+    }
     const bb = e.target.closest("[data-barber]");
     if (bb) { Booking.set({ barberId: bb.dataset.barber, start: null }); return go(null); }
   });
@@ -509,18 +583,19 @@ export function mountBooking() {
       if (pe) return setMsg($("#confirmMsg"), friendly(pe));
       try { await logConsent("reserva", State.user.email, f.full_name.trim()); } catch (ce) { return setMsg($("#confirmMsg"), friendly(ce)); }
       await loadProfile();
-      const { data, error } = await sb.rpc("book_appointment", {
-        p_service: b.serviceId, p_barber: b.barberId === "any" ? null : b.barberId, p_start: b.start, p_notes: b.notes || null
+      const ids = cartSvcs(b).map((s) => s.id);
+      const extras = SHOP_ITEMS.filter(([n]) => b.extras?.[n]).map(([n, p]) => ({ n, q: b.extras[n], p }));
+      const { data, error } = await sb.rpc("book_cart", {
+        p_services: ids, p_barber: b.barberId !== "any" ? b.barberId : ids.length > 1 ? b.slotBarber : null,
+        p_start: b.start, p_notes: b.notes || null, p_extras: extras.length ? extras : null
       });
       if (error) {
         setMsg($("#confirmMsg"), friendly(error));
         if (/HORARIO_OCUPADO|ANTICIPACION|BLOQUEADO|FUERA_DE_HORARIO/.test(error.message)) { Booking.set({ start: null }); toast(friendly(error), "err"); go(null); }
         return;
       }
-      const extras = SHOP_ITEMS.filter(([n]) => b.extras?.[n]).map(([n, p]) => ({ n, q: b.extras[n], p }));
-      if (extras.length) { const { error: xe } = await sb.rpc("set_appointment_extras", { p_id: data, p_extras: extras }); if (xe) toast("Tu cita quedó reservada, pero no pudimos guardar los adicionales. Pídelos en la barbería.", "err"); }
       Booking.clear();
-      location.hash = `#/reserva/${data}`;
+      location.hash = `#/reserva/${data.join(",")}`;
     });
   });
   render();
@@ -528,7 +603,8 @@ export function mountBooking() {
 
 /* Confirmación visual después de reservar (lee la cita real desde Supabase). */
 export async function viewBooked(id) {
-  const { data: a, error } = await sb.from("appointments").select("*").eq("id", id).maybeSingle();
+  const { data: list, error } = await sb.from("appointments").select("*").in("id", id.split(",").slice(0, 5)).order("starts_at");
+  const a = list?.[0], last = list?.at(-1);
   if (error || !a) return `<section class="wrap narrow">${emptyState("No encontramos esa reserva.", "", `<a class="btn" href="#/cuenta">Ver mis citas</a>`)}</section>`;
   const pend = a.status === "pendiente";
   return `<section class="wrap done">
@@ -537,11 +613,11 @@ export async function viewBooked(id) {
     <div class="done__ticket">
       <div class="done__date"><span>${esc(cap(fmtDay(ymd(new Date(a.starts_at)), { weekday: "long" })))}</span><strong>${+ymd(new Date(a.starts_at)).slice(8)}</strong><span>${esc(fmtDay(ymd(new Date(a.starts_at)), { month: "long", year: "numeric" }))}</span></div>
       <dl class="sum">
-        <div><dt>Hora</dt><dd>${fmtTime(a.starts_at)} – ${fmtTime(a.ends_at)}</dd></div>
-        <div><dt>Servicio</dt><dd>${esc(a.service_name)} · ${durLabel(a.duration_min)}</dd></div>
+        <div><dt>Hora</dt><dd>${fmtTime(a.starts_at)} – ${fmtTime(last.ends_at)}</dd></div>
+        <div><dt>Servicio${list.length > 1 ? "s" : ""}</dt><dd>${list.map((x) => `${esc(x.service_name)} · ${priceLabel(x.price)}`).join("<br>")}</dd></div>
         <div><dt>Barbero</dt><dd>${esc(a.barber_name)}</dd></div>
-        <div><dt>Precio</dt><dd>${priceLabel(a.price)}</dd></div>
         ${a.extras?.length ? `<div><dt>Adicionales</dt><dd>${esc(extrasText(a.extras))} · ${money(extrasTotal(a.extras))}</dd></div>` : ""}
+        ${list.every((x) => x.price != null) ? `<div class="sum__total"><dt>Total a pagar en la barbería</dt><dd>${money(list.reduce((t, x) => t + Number(x.price), 0) + extrasTotal(a.extras))}</dd></div>` : ""}
         ${N().direccion ? `<div><dt>Lugar</dt><dd>${esc(N().direccion)}</dd></div>` : ""}
       </dl>
     </div>

@@ -1,8 +1,8 @@
 /* Arranque y enrutador (#/ruta). Las rutas privadas se validan aquí y, sobre todo, en RLS. */
-import { CONFIGURED, sb, State, $, esc, safeUrl, loader, emptyState, friendly, loadPublic, loadProfile, isAdmin, waLink, cookieChoice, setCookieChoice } from "./core.js?v=20261102b";
-import { viewLegal } from "./legal.js?v=20261102b";
-import { viewHome, mountHome, viewBooking, mountBooking, viewBooked } from "./public.js?v=20261102b";
-import { viewAccount, processAuthLink, Recovery } from "./account.js?v=20261102b";
+import { CONFIGURED, sb, State, $, esc, safeUrl, loader, emptyState, friendly, loadPublic, loadProfile, isAdmin, waLink, cookieChoice, setCookieChoice } from "./core.js?v=20261102c";
+import { viewLegal } from "./legal.js?v=20261102c";
+import { viewHome, mountHome, viewBooking, mountBooking, viewBooked, cartCount } from "./public.js?v=20261102c";
+import { viewAccount, processAuthLink, Recovery } from "./account.js?v=20261102c";
 
 const app = $("#app");
 let seq = 0;
@@ -19,6 +19,7 @@ const I = {
   ig: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r=".8" fill="currentColor"/></svg>`,
   wa: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.3-3.8A8 8 0 1 1 8 19z"/><path d="M9 9.5c0 3 2.5 5.5 5.5 5.5l1.2-1.4-2-1-1 .8c-1-.5-1.8-1.3-2.3-2.3l.8-1-1-2z" fill="currentColor" stroke="none"/></svg>`,
   user: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>`,
+  bag: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14l-1.2 12H6.2z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>`,
   cal: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>`
 };
 
@@ -38,7 +39,6 @@ function header() {
       <div class="top__inner">
         <div class="top__left">
           <button class="menu-btn" type="button" aria-expanded="false" aria-controls="drawer" aria-label="Abrir menú"><span class="menu-btn__i" aria-hidden="true"><i></i><i></i></span></button>
-          <nav class="top__nav" aria-label="Principal">${links.map(([t, id]) => `<a href="#/inicio/${id}">${t}</a>`).join("")}</nav>
         </div>
         <a class="brand" href="#/" aria-label="${esc(n.nombre || "Elegance Barber")} — inicio">
           <img src="${esc(customLogo() || "assets/logo-crown-dark.png")}" alt="" class="brand__logo${customLogo() ? "" : " is-crown"}" width="40" height="40">
@@ -46,11 +46,19 @@ function header() {
         <div class="top__actions">
           ${safeUrl(n.instagram) ? `<a class="top__ic hide-sm" href="${esc(n.instagram)}" target="_blank" rel="noopener" aria-label="Instagram">${I.ig}</a>` : ""}
           ${wa ? `<a class="top__ic hide-sm" href="${esc(wa)}" target="_blank" rel="noopener" aria-label="WhatsApp">${I.wa}</a>` : ""}
+          <button type="button" class="top__ic top__cart" data-cart-open aria-label="Carrito">${I.bag}<b data-cart-n ${cartCount() ? "" : "hidden"}>${cartCount()}</b></button>
           <a class="top__ic" href="#/cuenta" aria-label="${State.user ? "Mi cuenta" : "Ingresar"}">${I.user}</a>
           <a class="top__ic top__book" href="#/reservar" aria-label="Reservar cita">${I.cal}<span>Reservar</span></a>
         </div>
       </div>
     </header>
+  </div>
+  <div class="drawer drawer--right" id="cart" hidden>
+    <div class="drawer__scrim" data-cart-close></div>
+    <aside class="drawer__panel" role="dialog" aria-modal="true" aria-label="Carrito">
+      <div class="drawer__head"><span>Tu carrito</span><button type="button" class="drawer__x" data-cart-close aria-label="Cerrar carrito">×</button></div>
+      <div id="cartBody" class="cart"></div>
+    </aside>
   </div>
   <div class="drawer" id="drawer" hidden>
     <div class="drawer__scrim" data-drawer-close></div>
@@ -99,7 +107,7 @@ async function render() {
     if (route === "admin") {
       if (!State.user) { location.hash = "#/cuenta?volver=admin"; return; }
       if (!isAdmin()) html = `<section class="wrap narrow">${emptyState("No tienes permisos de administrador.", "Esta sección es solo para el equipo de la barbería.", `<a class="btn" href="#/">Ir al inicio</a>`)}</section>`;
-      else { const inPanel = $(".adm"); if (inPanel) inPanel.classList.add("is-busy"); else app.innerHTML = loader("Cargando panel…"); const Admin = await import("./admin.js?v=20261102b"); if (my !== seq) return; ({ html, mount } = await Admin.view(a || "resumen", b, query)); }
+      else { const inPanel = $(".adm"); if (inPanel) inPanel.classList.add("is-busy"); else app.innerHTML = loader("Cargando panel…"); const Admin = await import("./admin.js?v=20261102c"); if (my !== seq) return; ({ html, mount } = await Admin.view(a || "resumen", b, query)); }
     } else if (route === "" || route === "inicio") { html = viewHome(); mount = mountHome; }
     else if (route === "legal") html = viewLegal(a);
     else if (route === "reservar") { html = viewBooking(query); mount = mountBooking; }

@@ -3,7 +3,7 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday, ymd, toIso, hhmm,
   fmtTime, fmtDate, fmtDay, fmtDateTime, minutes, fromMinutes, shortTime, STATUS, statusBadge, friendly, toast, loader, emptyState,
   formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin, extrasText, extrasTotal
-} from "./core.js?v=20261102b";
+} from "./core.js?v=20261102c";
 
 const SECTIONS = [
   ["resumen", "Resumen"], ["agenda", "Agenda"], ["citas", "Citas"], ["servicios", "Servicios"], ["barberos", "Barberos"],
