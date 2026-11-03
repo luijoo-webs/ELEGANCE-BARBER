@@ -3,7 +3,7 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday, ymd, toIso, hhmm,
   fmtTime, fmtDate, fmtDay, fmtDateTime, minutes, fromMinutes, shortTime, STATUS, statusBadge, friendly, toast, loader, emptyState,
   formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin, extrasText, extrasTotal
-} from "./core.js?v=20261102e";
+} from "./core.js?v=20261102f";
 
 const SECTIONS = [
   ["resumen", "Resumen"], ["agenda", "Agenda"], ["citas", "Citas"], ["servicios", "Servicios"], ["barberos", "Barberos"],
@@ -31,9 +31,15 @@ const ICON = {
   actividad: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
   estadisticas: '<path d="M3 21h18M6 17V10M11 17V5M16 17v-4M21 17V8"/>',
   sitio: '<path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/><circle cx="12" cy="12" r="9"/>',
+  salir: '<path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/>',
   cuenta: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>'
 };
 const ico = (k) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
+
+document.addEventListener("click", async (e) => {
+  if (!e.target.closest("[data-logout]")) return;
+  e.preventDefault(); await sb.auth.signOut(); location.hash = "#/";
+});
 
 function shell(sec, title, actions, body) {
   const logo = safeUrl(State.settings.negocio?.logo_url) || "assets/logo-crown-light.png";
@@ -42,7 +48,7 @@ function shell(sec, title, actions, body) {
       <a class="adm__brand" href="#/admin" aria-label="Panel — inicio"><img src="${esc(logo)}" alt=""><span><b>Elegance</b><small>Panel admin</small></span></a>
       <p class="adm__label">Gestión</p>
       <nav aria-label="Secciones del panel">${SECTIONS.map(([k, v]) => `<a href="#/admin/${k}" class="${k === sec ? "is-on" : ""}" ${k === sec ? 'aria-current="page"' : ""}>${ico(k)}${v}</a>`).join("")}</nav>
-      <div class="adm__bottom"><a href="#/">${ico("sitio")}Ver sitio</a><a href="#/cuenta">${ico("cuenta")}Mi cuenta</a></div>
+      <div class="adm__bottom"><a href="#/">${ico("sitio")}Ver sitio</a><a href="#/cuenta">${ico("cuenta")}Mi cuenta</a><a href="#/" data-logout>${ico("salir")}Cerrar sesión</a></div>
     </aside>
     <div class="adm__main"><div class="adm__head"><h1>${title}</h1><div class="row">${actions || ""}</div></div>${body}</div></div>`;
 }
