@@ -3,7 +3,7 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday,
   fmtDay, fmtTime, fmtDate, hhmm, ymd, friendly, toast, loader, emptyState, busy, scheduleByDay, barberWorkDays, waLink, setMsg,
   mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal, modal
-} from "./core.js?v=20261102h";
+} from "./core.js?v=20261102i";
 
 const N = () => State.settings.negocio || {};
 const R = () => State.settings.reservas || {};
@@ -336,22 +336,32 @@ function addExtra(n, d) {
 function cartHtml() {
   const b = Booking.get(), svcs = cartSvcs(b), ex = b.extras || {};
   const snacks = SHOP_ITEMS.filter(([n]) => ex[n]);
-  const total = svcs.reduce((t, s) => t + Number(s.price || 0), 0) + extrasSum(ex);
-  if (!svcs.length && !snacks.length) return `<p class="muted cart__empty">Tu carrito está vacío.</p><a class="btn btn--block" href="#/inicio/servicios" data-cart-close>Ver servicios</a>`;
+  const sSum = svcs.reduce((t, s) => t + Number(s.price || 0), 0), xSum = extrasSum(ex);
+  if (!svcs.length && !snacks.length) return `<div class="cart__empty"><p>Tu carrito está vacío.</p><a class="btn btn--block" href="#/inicio/servicios" data-cart-close>Ver servicios</a>
+    <button type="button" class="xpromo xpromo--sm" data-shop-open><span class="xpromo__txt"><b>Snacks y bebidas</b><small>Cervezas, gaseosas y snacks para tu cita</small></span><span class="xpromo__cta">Ver →</span></button></div>`;
+  const item = (href, pic, name, price, meta, acts) => `<li class="ci"><a class="ci__pic" href="${href}" data-cart-close tabindex="-1" aria-hidden="true">${pic}</a>
+    <div class="ci__body"><div class="ci__top"><a class="ci__name" href="${href}" data-cart-close>${esc(name)}</a><span class="ci__price">${price}</span></div><p class="ci__meta">${meta}</p><div class="ci__acts">${acts}</div></div></li>`;
   return `<ul class="cart__list">
-    ${svcs.map((s) => `<li><a class="cart__pic" href="#/servicio/${s.id}" data-cart-close tabindex="-1" aria-hidden="true"><img src="${esc(svcPhoto(s))}" alt=""></a><span class="extras__name"><a href="#/servicio/${s.id}" data-cart-close>${esc(s.name)}</a><small>${durLabel(s.duration_min)} · ${priceLabel(s.price)}</small></span><button type="button" class="cart__rm" data-cart-rm="${s.id}" aria-label="Quitar ${esc(s.name)}">×</button></li>`).join("")}
-    ${snacks.map(([n, p, img]) => `<li><a class="cart__pic" href="#/producto/${img}" data-cart-close tabindex="-1" aria-hidden="true">${pkImg(img)}</a><span class="extras__name"><a href="#/producto/${img}" data-cart-close>${esc(n)}</a><small>${money(p)} c/u · ${money(p * ex[n])}</small></span>
-      <span class="qty"><button type="button" data-cx="${esc(n)}" data-d="-1" aria-label="Quitar ${esc(n)}">−</button><b>${ex[n]}</b><button type="button" data-cx="${esc(n)}" data-d="1" aria-label="Agregar ${esc(n)}">+</button></span></li>`).join("")}
+    ${svcs.map((s) => item(`#/servicio/${s.id}`, `<img src="${esc(svcPhoto(s))}" alt="">`, s.name, priceLabel(s.price), `Servicio · ${durLabel(s.duration_min)}`,
+      `<span class="ci__tag">1 cita</span><button type="button" class="ci__rm" data-cart-rm="${s.id}" aria-label="Eliminar ${esc(s.name)}">Eliminar</button>`)).join("")}
+    ${snacks.map(([n, p, img]) => item(`#/producto/${img}`, `<img src="assets/tienda/mini/${img}.jpg" alt="">`, n, money(p * ex[n]), `${money(p)} c/u`,
+      `<span class="qty qty--box"><button type="button" data-cx="${esc(n)}" data-d="-1" aria-label="Quitar uno">−</button><b>${ex[n]}</b><button type="button" data-cx="${esc(n)}" data-d="1" aria-label="Agregar uno">+</button></span><button type="button" class="ci__rm" data-cx="${esc(n)}" data-d="-10" aria-label="Eliminar ${esc(n)}">Eliminar</button>`)).join("")}
   </ul>
   <button type="button" class="xpromo xpromo--sm" data-shop-open><span class="xpromo__txt"><b>+ Snacks y bebidas</b><small>Cervezas, gaseosas y snacks para tu cita</small></span><span class="xpromo__cta">Ver →</span></button>
-  <p class="cart__total"><span>Total</span><strong>${money(total)}</strong></p>
-  <p class="muted small">Se paga en la barbería, después del servicio.</p>
-  ${svcs.length ? `<a class="btn btn--lg btn--block" href="#/reservar" data-cart-close>Reservar · elegir barbero y hora</a>`
-    : `<p class="muted small">Agrega al menos un servicio para reservar; los snacks se entregan en tu cita.</p><a class="btn btn--block" href="#/inicio/servicios" data-cart-close>Ver servicios</a>`}`;
+  <div class="cart__foot">
+    ${svcs.length ? `<p class="cart__row"><span>Servicios</span><span>${money(sSum)}</span></p>` : ""}
+    ${snacks.length ? `<p class="cart__row"><span>Snacks y bebidas</span><span>${money(xSum)}</span></p>` : ""}
+    <p class="cart__row"><span>Pago</span><span class="muted">En la barbería</span></p>
+    <p class="cart__total"><span>Total</span><strong>${money(sSum + xSum)}</strong></p>
+    ${svcs.length ? `<a class="btn btn--lg btn--block" href="#/reservar" data-cart-close>Reservar · elegir barbero y hora</a>`
+      : `<p class="muted small">Agrega al menos un servicio para reservar; los snacks se entregan en tu cita.</p><a class="btn btn--lg btn--block" href="#/inicio/servicios" data-cart-close>Ver servicios</a>`}
+    <button type="button" class="cart__clear" data-cart-empty>Vaciar carrito</button>
+  </div>`;
 }
 export function refreshCart() {
   const n = cartCount();
   document.querySelectorAll("[data-cart-n]").forEach((el) => { el.textContent = n; el.hidden = !n; });
+  document.querySelectorAll("[data-cart-c]").forEach((el) => { el.textContent = n ? `(${n})` : ""; });
   const body = $("#cartBody"); if (body) body.innerHTML = cartHtml();
   const ex = Booking.get().extras || {};
   document.querySelectorAll("[data-cxn]").forEach((el) => { el.textContent = ex[el.dataset.cxn] || 0; });
@@ -375,11 +385,12 @@ document.addEventListener("click", (e) => {
   if (e.target.closest("[data-cart-open]")) return toggleCart(true);
   if (e.target.closest("[data-cart-close]")) toggleCart(false);
   const cs = e.target.closest("[data-cart-svc]");
-  if (cs && addService(cs.dataset.cartSvc)) { refreshCart(); toast("Servicio agregado al carrito"); if (cs.closest(".pdp__acts")) cs.textContent = "✓ Ya está en tu carrito"; }
+  if (cs && addService(cs.dataset.cartSvc)) { toggleCart(true); if (cs.closest(".pdp__acts")) cs.textContent = "✓ Ya está en tu carrito"; }
   const cx = e.target.closest("[data-cart-x]");
-  if (cx) { addExtra(cx.dataset.cartX, 1); refreshCart(); toast(`${cx.dataset.cartX} agregado al carrito`); }
+  if (cx) { addExtra(cx.dataset.cartX, 1); toggleCart(true); refreshCart(); }
   const rm = e.target.closest("[data-cart-rm]");
   if (rm) { Booking.set({ serviceIds: cartSvcs().map((s) => s.id).filter((id) => id !== rm.dataset.cartRm), start: null }); refreshCart(); }
+  if (e.target.closest("[data-cart-empty]")) { Booking.set({ serviceIds: [], extras: {}, start: null }); refreshCart(); }
   const so = e.target.closest("[data-shop-open]");
   if (so && !so.closest("#steps")) openShop();   // en la reserva lo abre su propio manejador
   const cq = e.target.closest("[data-cx]");

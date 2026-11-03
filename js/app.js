@@ -1,8 +1,8 @@
 /* Arranque y enrutador (#/ruta). Las rutas privadas se validan aquí y, sobre todo, en RLS. */
-import { CONFIGURED, sb, State, $, esc, safeUrl, loader, emptyState, friendly, loadPublic, loadProfile, isAdmin, waLink, cookieChoice, setCookieChoice } from "./core.js?v=20261102h";
-import { viewLegal } from "./legal.js?v=20261102h";
-import { viewHome, mountHome, viewBooking, mountBooking, viewBooked, cartCount, viewService, viewProduct } from "./public.js?v=20261102h";
-import { viewAccount, processAuthLink, Recovery } from "./account.js?v=20261102h";
+import { CONFIGURED, sb, State, $, esc, safeUrl, loader, emptyState, friendly, loadPublic, loadProfile, isAdmin, waLink, cookieChoice, setCookieChoice } from "./core.js?v=20261102i";
+import { viewLegal } from "./legal.js?v=20261102i";
+import { viewHome, mountHome, viewBooking, mountBooking, viewBooked, cartCount, viewService, viewProduct } from "./public.js?v=20261102i";
+import { viewAccount, processAuthLink, Recovery } from "./account.js?v=20261102i";
 
 const app = $("#app");
 let seq = 0;
@@ -57,7 +57,7 @@ function header() {
   <div class="drawer drawer--right" id="cart" hidden>
     <div class="drawer__scrim" data-cart-close></div>
     <aside class="drawer__panel" role="dialog" aria-modal="true" aria-label="Carrito">
-      <div class="drawer__head"><span>Tu carrito</span><button type="button" class="drawer__x" data-cart-close aria-label="Cerrar carrito">×</button></div>
+      <div class="drawer__head"><span>Tu carrito <span data-cart-c></span></span><button type="button" class="drawer__x" data-cart-close aria-label="Cerrar carrito">×</button></div>
       <div id="cartBody" class="cart"></div>
     </aside>
   </div>
@@ -108,7 +108,7 @@ async function render() {
     if (route === "admin") {
       if (!State.user) { location.hash = "#/cuenta?volver=admin"; return; }
       if (!isAdmin()) html = `<section class="wrap narrow">${emptyState("No tienes permisos de administrador.", "Esta sección es solo para el equipo de la barbería.", `<a class="btn" href="#/">Ir al inicio</a>`)}</section>`;
-      else { const inPanel = $(".adm"); if (inPanel) inPanel.classList.add("is-busy"); else app.innerHTML = loader("Cargando panel…"); const Admin = await import("./admin.js?v=20261102h"); if (my !== seq) return; ({ html, mount } = await Admin.view(a || "resumen", b, query)); }
+      else { const inPanel = $(".adm"); if (inPanel) inPanel.classList.add("is-busy"); else app.innerHTML = loader("Cargando panel…"); const Admin = await import("./admin.js?v=20261102i"); if (my !== seq) return; ({ html, mount } = await Admin.view(a || "resumen", b, query)); }
     } else if (route === "" || route === "inicio") { html = viewHome(); mount = mountHome; }
     else if (route === "legal") html = viewLegal(a);
     else if (route === "servicio" && a) html = viewService(a);
