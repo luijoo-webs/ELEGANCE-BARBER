@@ -4,7 +4,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
 import nodemailer from "npm:nodemailer@6.9.16";
 
-const SITE = "https://luijoo-webs.github.io/ELEGANCE-BARBER/";
+const SITE = "https://theelegancebarber.com/";
 const TZ = "America/Bogota";
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 

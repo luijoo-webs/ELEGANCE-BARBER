@@ -1,8 +1,8 @@
 /* Arranque y enrutador (#/ruta). Las rutas privadas se validan aquí y, sobre todo, en RLS. */
-import { CONFIGURED, sb, State, $, esc, safeUrl, loader, emptyState, friendly, loadPublic, loadProfile, isAdmin, waLink, cookieChoice, setCookieChoice } from "./core.js?v=20261104a";
-import { viewLegal } from "./legal.js?v=20261104a";
-import { viewHome, mountHome, viewBooking, mountBooking, viewBooked, cartCount, viewService, viewProduct } from "./public.js?v=20261104a";
-import { viewAccount, processAuthLink, Recovery } from "./account.js?v=20261104a";
+import { CONFIGURED, sb, State, $, esc, safeUrl, loader, emptyState, friendly, loadPublic, loadProfile, isAdmin, waLink, cookieChoice, setCookieChoice } from "./core.js?v=20261104b";
+import { viewLegal } from "./legal.js?v=20261104b";
+import { viewHome, mountHome, viewBooking, mountBooking, viewBooked, cartCount, viewService, viewProduct } from "./public.js?v=20261104b";
+import { viewAccount, processAuthLink, Recovery } from "./account.js?v=20261104b";
 
 const app = $("#app");
 let seq = 0;
@@ -108,7 +108,7 @@ async function render() {
     if (route === "admin") {
       if (!State.user) { location.hash = "#/cuenta?volver=admin"; return; }
       if (!isAdmin()) html = `<section class="wrap narrow">${emptyState("No tienes permisos de administrador.", "Esta sección es solo para el equipo de la barbería.", `<a class="btn" href="#/">Ir al inicio</a>`)}</section>`;
-      else { const inPanel = $(".adm"); if (inPanel) inPanel.classList.add("is-busy"); else app.innerHTML = loader("Cargando panel…"); const Admin = await import("./admin.js?v=20261104a"); if (my !== seq) return; ({ html, mount } = await Admin.view(a || "resumen", b, query)); }
+      else { const inPanel = $(".adm"); if (inPanel) inPanel.classList.add("is-busy"); else app.innerHTML = loader("Cargando panel…"); const Admin = await import("./admin.js?v=20261104b"); if (my !== seq) return; ({ html, mount } = await Admin.view(a || "resumen", b, query)); }
     } else if (route === "" || route === "inicio") { html = viewHome(); mount = mountHome; }
     else if (route === "legal") html = viewLegal(a);
     else if (route === "servicio" && a) html = viewService(a);
@@ -122,7 +122,8 @@ async function render() {
     else html = `<section class="wrap narrow">${emptyState("Página no encontrada.", "", `<a class="btn" href="#/">Ir al inicio</a>`)}</section>`;
   } catch (e) {
     console.error(e);
-    html = `<section class="wrap narrow">${emptyState("No pudimos cargar esta página.", friendly(e), `<button class="btn" onclick="location.reload()">Reintentar</button>`)}</section>`;
+    html = `<section class="wrap narrow">${emptyState("No pudimos cargar esta página.", friendly(e), `<button class="btn" data-retry>Reintentar</button>`)}</section>`;
+    mount = () => app.querySelector("[data-retry]").addEventListener("click", () => location.reload());   // la CSP no admite onclick en línea
   }
   if (my !== seq) return;
   app.innerHTML = (panel ? "" : header()) + `<main id="main" tabindex="-1">${html}</main>` + (panel ? "" : footer());
