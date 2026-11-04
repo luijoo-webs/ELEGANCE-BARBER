@@ -60,7 +60,7 @@ Entra a `https://theelegancebarber.com/#/admin` con una cuenta de administrador.
 |---|---|
 | Registros DNS | DNS → Records |
 | Modo de cifrado (está en Full (Strict)) | SSL/TLS → Overview |
-| Redirección a HTTPS y TLS mínimo 1.2 | SSL/TLS → Edge Certificates |
+| Redirección a HTTPS, TLS mínimo 1.2 y HSTS (1 mes, sin subdominios ni preload) | SSL/TLS → Edge Certificates |
 | Bot Fight Mode | Security → Settings → Bot traffic |
 | Encabezados de seguridad | Rules → Settings → Managed Transforms |
 | Si la web está bajo ataque | Security → Settings → activar **I'm Under Attack** |
