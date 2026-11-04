@@ -63,6 +63,7 @@ Entra a `https://theelegancebarber.com/#/admin` con una cuenta de administrador.
 | Redirección a HTTPS, TLS mínimo 1.2 y HSTS (1 mes, sin subdominios ni preload) | SSL/TLS → Edge Certificates |
 | Bot Fight Mode | Security → Settings → Bot traffic |
 | Encabezados de seguridad | Rules → Settings → Managed Transforms |
+| Permissions-Policy (cámara, micrófono, ubicación, pagos y USB bloqueados) | Rules → Overview → regla "Permissions-Policy" |
 | Si la web está bajo ataque | Security → Settings → activar **I'm Under Attack** |
 | Si un cambio no aparece | Caching → Configuration → Purge Everything |
 
@@ -88,6 +89,8 @@ Entra a `https://theelegancebarber.com/#/admin` con una cuenta de administrador.
 
 - **Dominio:** vence el 4 de noviembre de 2027 y la renovación automática está apagada. Actívala en Spaceship o renuévalo a tiempo; si vence, la web se cae.
 - **Plan de Supabase:** en el plan gratuito, los proyectos sin actividad pueden pausarse. Revisa el panel si la web deja de mostrar datos.
+
+- **Certificado de GitHub:** cada lunes la revisión "Revisar certificado" (pestaña Actions) comprueba que falten más de 20 días. Si falla, GitHub avisa por correo a su dueño: sigue la fila "Error 526" antes de que venza.
 
 ## Si algo falla
 

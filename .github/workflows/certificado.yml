@@ -1,0 +1,20 @@
+# Falla (y GitHub avisa por correo) si el certificado de GitHub Pages está por vencer o no es del dominio.
+# Se mira el servidor de GitHub directamente, porque por el dominio se vería el certificado de Cloudflare.
+# shortcut: GitHub apaga los horarios tras 60 días sin actividad en el repo; si avisa de eso, reactívalo en Actions.
+name: Revisar certificado
+on:
+  schedule:
+    - cron: "0 13 * * 1"
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/certificado.yml"]
+permissions: {}
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo | openssl s_client -connect 185.199.108.153:443 -servername theelegancebarber.com 2>/dev/null | openssl x509 > cert.pem
+          openssl x509 -in cert.pem -noout -subject -issuer -enddate
+          openssl x509 -in cert.pem -noout -checkhost theelegancebarber.com | grep "does match"
+          openssl x509 -in cert.pem -noout -checkend 1728000   # 20 días
