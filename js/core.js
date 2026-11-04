@@ -1,6 +1,6 @@
 /* Núcleo compartido: conexión, estado, utilidades de fecha (America/Bogota), errores y UI básica. */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js?v=20261103e";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js?v=20261104a";
 
 export const CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 export const sb = CONFIGURED
@@ -116,6 +116,7 @@ const ERRORS = {
   ESTADO_INVALIDO: "Estado no válido.",
   CLIENTE_REQUERIDO: "Escribe el nombre del cliente o elige uno registrado.",
   TRANSICION_INVALIDA: "Ese cambio de estado no está permitido.",
+  DEMASIADOS_INTENTOS: "Se hicieron muchas reservas desde esta conexión. Intenta más tarde o escríbenos por WhatsApp.",
   CITA_FUTURA: "Eso solo se puede marcar cuando ya pasó la hora de la cita.",
   RANGO_INVALIDO: "El rango de fechas no es válido (máximo un año)."
 };

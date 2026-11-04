@@ -372,4 +372,23 @@ assert.equal((await db.query(`select id from finance_entries where id = $1`, [au
 assert.equal((await db.query(`select appointment_id from finance_entries where id = $1`, [mano.id])).rows[0].appointment_id, null);
 ok("eliminar: completada se borra con su ingreso automático; una activa no; el ingreso manual se conserva");
 
+console.log("Migración 13 (seguridad)");
+const m13 = readFileSync(new URL("../supabase/13_seguridad.sql", import.meta.url), "utf8");
+await db.exec(m13); await db.exec(m13);
+await db.query(`select set_config('request.headers', '{"cf-connecting-ip":"203.0.113.9"}', false)`);
+await db.query(`insert into guest_rate(ip) select '203.0.113.9' from generate_series(1, 4)`);
+const gr13 = (h, c) => as(null, `select book_cart_guest('Inv IP', '3001234567', $3, $1::uuid[], null, $2) r`, [[barba.id], `${d3}T${h}:00-05:00`, c]);
+await gr13("12:00", "ip1@correo.co");
+await fails(gr13("13:00", "ip2@correo.co"), "DEMASIADOS_INTENTOS");
+await db.query(`select set_config('request.headers', '{"cf-connecting-ip":"203.0.113.10"}', false)`);
+await gr13("13:00", "ip3@correo.co");
+await db.query(`select set_config('request.headers', '', false)`);
+ok("seguridad: máximo 5 reservas de invitado por hora desde una IP; otra IP no se afecta");
+await fails(as(null, `select * from guest_rate`), "permission denied");
+await fails(as(null, `update settings set value = '{}' where key = 'negocio'`), "permission denied");
+await fails(as(null, `truncate settings`), "permission denied");
+await fails(as(U.ana, `truncate services`), "permission denied");
+assert.ok((await as(U.ana, `select id from services limit 1`)).length);
+ok("seguridad: anónimo no escribe ni vacía tablas; el sitio sigue leyendo");
+
 console.log(`\n${passed} pruebas OK`);
