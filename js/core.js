@@ -1,12 +1,35 @@
 /* Núcleo compartido: conexión, estado, utilidades de fecha (America/Bogota), errores y UI básica. */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js?v=20261104b";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, TURNSTILE_SITE_KEY } from "./config.js?v=20261104c";
 
 export const CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 export const sb = CONFIGURED
   ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } })
   : null;
 export const SITE_URL = location.origin + location.pathname.replace(/index\.html$/, "");
+
+/* ---------- Turnstile (casilla anti-robots) ---------- */
+export const captchaSlot = () => TURNSTILE_SITE_KEY ? `<div class="captcha" data-captcha></div>` : "";
+if (TURNSTILE_SITE_KEY) {
+  const s = document.createElement("script");
+  s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+  const paint = () => window.turnstile && document.querySelectorAll("[data-captcha]:not([data-id])").forEach((el) => { el.dataset.id = window.turnstile.render(el, { sitekey: TURNSTILE_SITE_KEY, language: "es" }); });
+  s.onload = paint; document.head.append(s);
+  new MutationObserver(paint).observe(document.documentElement, { childList: true, subtree: true });   // los formularios se dibujan después
+}
+const captchaEl = (form) => form?.querySelector("[data-captcha][data-id]");
+export const captchaToken = (form) => { const el = captchaEl(form); return el ? window.turnstile.getResponse(el.dataset.id) : undefined; };
+export const captchaReset = (form) => { const el = captchaEl(form); if (el) window.turnstile.reset(el.dataset.id); };   // cada token sirve una sola vez
+
+/* Reserva sin cuenta: con Turnstile va por la función del servidor. */
+export async function bookGuest(form, args) {
+  if (!TURNSTILE_SITE_KEY) return sb.rpc("book_cart_guest", args);
+  const { data, error } = await sb.functions.invoke("reservar", { body: { token: captchaToken(form), args } });
+  captchaReset(form);
+  if (!error) return { data };
+  const body = await error.context?.json?.().catch(() => null);
+  return { error: { message: body?.error || error.message } };
+}
 
 /* ---------- Estado global ---------- */
 export const State = {
@@ -116,7 +139,9 @@ const ERRORS = {
   ESTADO_INVALIDO: "Estado no válido.",
   CLIENTE_REQUERIDO: "Escribe el nombre del cliente o elige uno registrado.",
   TRANSICION_INVALIDA: "Ese cambio de estado no está permitido.",
-  DEMASIADOS_INTENTOS: "Se hicieron muchas reservas desde esta conexión. Intenta más tarde o escríbenos por WhatsApp.",
+  VERIFICACION_FALLIDA: "Completa la verificación de seguridad e inténtalo de nuevo.",
+  VERIFICACION_NO_DISPONIBLE: "La verificación de seguridad no está disponible. Intenta de nuevo en un momento o escríbenos por WhatsApp.",
+  DEMASIADOS_INTENTOS:"Se hicieron muchas reservas desde esta conexión. Intenta más tarde o escríbenos por WhatsApp.",
   CITA_FUTURA: "Eso solo se puede marcar cuando ya pasó la hora de la cita.",
   RANGO_INVALIDO: "El rango de fechas no es válido (máximo un año)."
 };

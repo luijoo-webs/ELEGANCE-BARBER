@@ -1113,3 +1113,5 @@ body.is-admin .ticket2 input { min-height: 34px; padding: 5px 9px; background: r
 .paynote--wait { background: #fff6e0; color: #8a5d00; }
 .paynote--ok { background: #e7f4ea; color: #1f6b3a; }
 .paynote--no { background: #f9eeec; color: var(--danger); }
+
+.captcha { min-height: 65px; max-width: 100%; }

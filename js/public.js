@@ -2,8 +2,8 @@
 import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday,
   fmtDay, fmtTime, fmtDate, hhmm, ymd, friendly, toast, loader, emptyState, busy, scheduleByDay, barberWorkDays, waLink, setMsg,
-  mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal, modal, minutes
-} from "./core.js?v=20261104b";
+  mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal, modal, minutes, captchaSlot, bookGuest
+} from "./core.js?v=20261104c";
 
 const N = () => State.settings.negocio || {};
 const R = () => State.settings.reservas || {};
@@ -681,6 +681,7 @@ export function mountBooking() {
         <small class="muted">Pagas en la barbería al terminar tu servicio.</small></fieldset>
       <p class="muted small">${guest ? "Reservas como invitado." : `Cuenta: <strong>${esc(State.user.email)}</strong>.`} El pago se hace en la barbería.</p>
       ${consentChecks()}
+      ${guest ? captchaSlot() : ""}
       <button class="btn btn--lg btn--block" type="submit" data-busy="Confirmando…">Confirmar cita</button>
       <p class="form-msg" id="confirmMsg" role="alert"></p></form>`;
   }
@@ -724,7 +725,7 @@ export function mountBooking() {
     await busy(e.submitter || $("#confirmForm button"), async () => {
       if (!State.user) {   // invitado: sin cuenta, con correo para la confirmación y el recordatorio
         try { await logConsent("reserva", f.email.trim(), f.full_name.trim()); } catch (ce) { return setMsg($("#confirmMsg"), friendly(ce)); }
-        const { data, error } = await sb.rpc("book_cart_guest", { p_name: f.full_name.trim(), p_phone: f.phone.trim(), p_email: f.email.trim(), ...args });
+        const { data, error } = await bookGuest(e.target, { p_name: f.full_name.trim(), p_phone: f.phone.trim(), p_email: f.email.trim(), ...args });
         if (error) return failed(error);
         sb.functions.invoke("notificaciones").catch(() => {});
         const svcs = cartSvcs(b);

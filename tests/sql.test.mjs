@@ -391,4 +391,15 @@ await fails(as(U.ana, `truncate services`), "permission denied");
 assert.ok((await as(U.ana, `select id from services limit 1`)).length);
 ok("seguridad: anónimo no escribe ni vacía tablas; el sitio sigue leyendo");
 
+console.log("Migración 14 (puerta de reservas)");
+const m14 = readFileSync(new URL("../supabase/14_guardia_reservas.sql", import.meta.url), "utf8");
+await db.exec(m14).catch(async (e) => { if (!/service_role/.test(e.message)) throw e; await db.exec(`create role service_role`); await db.exec(m14); });
+await db.exec(m14);
+const gate = (ip, h, c) => db.query(`select book_cart_guest_gate($1, 'Inv Gate', '3001234567', $2, $3::uuid[], null, $4) r`, [ip, c, [barba.id], `${d3}T${h}:00-05:00`]);
+await db.query(`insert into guest_rate(ip) select '203.0.113.20' from generate_series(1, 5)`);
+await fails(gate("203.0.113.20", "14:00", "g1@correo.co"), "DEMASIADOS_INTENTOS");
+await gate("203.0.113.21", "14:00", "g2@correo.co");
+await fails(as(null, `select book_cart_guest_gate('1.1.1.1', 'X Y', '3001234567', 'x@correo.co', $1::uuid[], null, $2)`, [[barba.id], `${d3}T15:00:00-05:00`]), "permission denied");
+ok("puerta: aplica el límite con la IP recibida y el anónimo no puede llamarla");
+
 console.log(`\n${passed} pruebas OK`);
