@@ -66,6 +66,12 @@ Entra a `https://theelegancebarber.com/#/admin` con una cuenta de administrador.
 - **Correos:** al guardar en GitHub no se publican. Hay que pegar `index.ts` en Supabase → Edge Functions → `notificaciones` → Code y pulsar Deploy.
 - **Un servicio externo nuevo** (por ejemplo un script o un mapa distinto): agrégalo a la línea `Content-Security-Policy` de `index.html`, o el navegador lo bloqueará. Las imágenes externas con `https` ya están permitidas.
 
+### Aparecer en Google
+
+- **Datos que lee Google:** están en `index.html` (título, descripción, ficha de la barbería y lista de servicios). Si cambia la dirección, el teléfono o la ciudad, hay que cambiarlos ahí también, además de en el panel.
+- **Google Analytics:** el ID `G-…` va en `GA_ID` de `js/config.js`. Solo mide a quien elige «Aceptar todas».
+- **Solo se indexa la portada:** las demás páginas usan `#/`, y Google no las trata como páginas aparte.
+
 ### Dominio y seguridad (Cloudflare)
 
 | Qué | Dónde |

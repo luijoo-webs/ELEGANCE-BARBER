@@ -3,8 +3,8 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday, ymd, toIso, hhmm,
   fmtTime, fmtDate, fmtDay, fmtDateTime, minutes, fromMinutes, shortTime, STATUS, statusBadge, friendly, toast, loader, emptyState,
   formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin, extrasText, extrasTotal, prodMini
-} from "./core.js?v=20261105a";
-import { svcPhoto } from "./public.js?v=20261105a";
+} from "./core.js?v=20261105b";
+import { svcPhoto } from "./public.js?v=20261105b";
 
 // El tercer dato abre un grupo en el menú.
 const SECTIONS = [

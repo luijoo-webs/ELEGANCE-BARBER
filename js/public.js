@@ -3,7 +3,7 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday,
   fmtDay, fmtTime, fmtDate, hhmm, ymd, friendly, toast, loader, emptyState, busy, scheduleByDay, barberWorkDays, waLink, setMsg,
   mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal, modal, minutes, captchaSlot, bookGuest, statusBadge, SITE_URL, SHOP, SHOP_LIST, SHOP_ITEMS
-} from "./core.js?v=20261105a";
+} from "./core.js?v=20261105b";
 
 const N = () => State.settings.negocio || {};
 const R = () => State.settings.reservas || {};

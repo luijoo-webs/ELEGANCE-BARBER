@@ -5,4 +5,6 @@
 export const SUPABASE_URL = "https://bmbcyngdancirqvvyfdn.supabase.co";
 // Clave PÚBLICA de Turnstile (la secreta vive en Supabase). Solo vale en el dominio real; vacía = sin casilla.
 export const TURNSTILE_SITE_KEY = location.hostname === "theelegancebarber.com" ? "0x4AAAAAAF0F9tRJJMMcaPGv" : "";
+// ID público de Google Analytics (G-XXXXXXXXXX). Solo mide en el dominio real; vacío = sin Analytics.
+export const GA_ID = location.hostname === "theelegancebarber.com" ? "" : "";
 export const SUPABASE_ANON_KEY ="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJtYmN5bmdkYW5jaXJxdnZ5ZmRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMyOTQ3MDIsImV4cCI6MjEwODg3MDcwMn0.AhYa7aXI71NH-4kPlgTwZ5kEFkJ2pfKKFPsE6FEb9-Q";

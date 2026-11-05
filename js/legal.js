@@ -1,5 +1,5 @@
 /* Documentos legales (Colombia): términos, privacidad (Ley 1581 de 2012), cookies y reembolsos (Ley 1480 de 2011). */
-import { State, esc, safeUrl, waLink, LEGAL_VERSION } from "./core.js?v=20261105a";
+import { State, esc, safeUrl, waLink, LEGAL_VERSION, analyticsOn } from "./core.js?v=20261105b";
 
 const PEND = `<em class="is-pending">pendiente de completar en Admin → Configuración</em>`;
 function who() {
@@ -68,8 +68,8 @@ const DOCS = {
     <p>Las cookies y el almacenamiento local son pequeños archivos que el navegador guarda en tu dispositivo.</p>
     <h2>1. Lo que usamos</h2>
     <ul><li><b>Estrictamente necesarios</b> (almacenamiento local): mantener tu sesión iniciada, recordar la reserva que estás armando y tu elección sobre cookies. Sin ellos el sitio no funciona, por eso no requieren consentimiento.</li>
-      <li><b>De terceros (opcionales):</b> el mapa de Google Maps de la sección Visítanos. Google puede poner sus propias cookies cuando el mapa se carga, por eso solo lo mostramos si lo aceptas.</li></ul>
-    <p>No usamos cookies de analítica ni de publicidad.</p>
+      <li><b>De terceros (opcionales):</b> el mapa de Google Maps de la sección Visítanos. Google puede poner sus propias cookies cuando el mapa se carga, por eso solo lo mostramos si lo aceptas.</li>${analyticsOn ? `<li><b>De analítica (opcionales):</b> Google Analytics, para saber cuántas personas visitan el sitio y qué páginas ven. Solo se activa si eliges «Aceptar todas». No enviamos tus citas ni tus datos de cuenta.</li>` : ""}</ul>
+    <p>${analyticsOn ? "No usamos cookies de publicidad." : "No usamos cookies de analítica ni de publicidad."}</p>
     <h2>2. Cómo cambiar tu elección</h2>
     <p><button type="button" class="btn btn--sm btn--ghost" data-cookies="reset">Cambiar mi elección de cookies</button> También puedes borrar los datos del sitio desde la configuración de tu navegador.</p>
     <p>Más información sobre las cookies de Google: <a href="https://policies.google.com/technologies/cookies" target="_blank" rel="noopener">policies.google.com</a>.</p>`],

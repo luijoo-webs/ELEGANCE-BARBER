@@ -1,8 +1,8 @@
 /* Arranque y enrutador (#/ruta). Las rutas privadas se validan aquí y, sobre todo, en RLS. */
-import { CONFIGURED, sb, State, $, esc, safeUrl, loader, emptyState, friendly, loadPublic, loadProfile, isAdmin, waLink, cookieChoice, setCookieChoice } from "./core.js?v=20261105a";
-import { viewLegal } from "./legal.js?v=20261105a";
-import { viewHome, mountHome, viewBooking, mountBooking, viewBooked, viewApptLink, cartCount, viewService, viewProduct } from "./public.js?v=20261105a";
-import { viewAccount, processAuthLink, Recovery } from "./account.js?v=20261105a";
+import { CONFIGURED, sb, State, $, esc, safeUrl, loader, emptyState, friendly, loadPublic, loadProfile, isAdmin, waLink, cookieChoice, setCookieChoice, startAnalytics, analyticsOn } from "./core.js?v=20261105b";
+import { viewLegal } from "./legal.js?v=20261105b";
+import { viewHome, mountHome, viewBooking, mountBooking, viewBooked, viewApptLink, cartCount, viewService, viewProduct } from "./public.js?v=20261105b";
+import { viewAccount, processAuthLink, Recovery } from "./account.js?v=20261105b";
 
 const app = $("#app");
 let seq = 0;
@@ -90,8 +90,8 @@ function footer() {
     <p class="foot__copy">© ${new Date().getFullYear()} ${esc(n.nombre_largo || n.nombre || "Elegance Barber")}${n.eslogan ? ` · ${esc(n.eslogan)}` : ""}</p>
   </div></footer>
   <a class="fab" href="#/reservar">Reservar cita</a>
-  ${cookieChoice() ? "" : `<div class="cookie-bar" role="region" aria-label="Cookies"><p>Usamos solo almacenamiento necesario para que el sitio funcione. El mapa de Google usa cookies propias de Google. <a href="#/legal/cookies">Más información</a></p>
-    <div class="row"><button type="button" class="btn btn--sm btn--ghost" data-cookies="min">Solo necesarias</button><button type="button" class="btn btn--sm" data-cookies="all">Aceptar todas</button></div></div>`}
+  ${cookieChoice() ? "" : `<div class="cookie-bar" role="region" aria-label="Cookies"><p>Usamos almacenamiento necesario para que el sitio funcione. El mapa de Google usa cookies de Google${analyticsOn ? " y, si aceptas, medimos las visitas con Google Analytics" : ""}. <a href="#/legal/cookies">Más información</a></p>
+    <div class="row"><button type="button" class="btn btn--sm btn--ghost" data-cookies="min">Solo necesarias</button><button type="button" class="btn btn--sm" data-cookies="todo">Aceptar todas</button></div></div>`}
   ${waLink() ? `<a class="wa-float" href="${esc(waLink())}" target="_blank" rel="noopener" aria-label="Escríbenos por WhatsApp">${I.wa}</a>` : ""}`;
 }
 
@@ -108,7 +108,7 @@ async function render() {
     if (route === "admin") {
       if (!State.user) { location.hash = "#/cuenta?volver=admin"; return; }
       if (!isAdmin()) html = `<section class="wrap narrow">${emptyState("No tienes permisos de administrador.", "Esta sección es solo para el equipo de la barbería.", `<a class="btn" href="#/">Ir al inicio</a>`)}</section>`;
-      else { const inPanel = $(".adm"); if (inPanel) inPanel.classList.add("is-busy"); else app.innerHTML = loader("Cargando panel…"); const Admin = await import("./admin.js?v=20261105a"); if (my !== seq) return; ({ html, mount } = await Admin.view(a || "resumen", b, query)); }
+      else { const inPanel = $(".adm"); if (inPanel) inPanel.classList.add("is-busy"); else app.innerHTML = loader("Cargando panel…"); const Admin = await import("./admin.js?v=20261105b"); if (my !== seq) return; ({ html, mount } = await Admin.view(a || "resumen", b, query)); }
     } else if (route === "" || route === "inicio") { html = viewHome(); mount = mountHome; }
     else if (route === "legal") html = viewLegal(a);
     else if (route === "servicio" && a) html = viewService(a);
@@ -204,11 +204,13 @@ async function start() {
     if (event === "PASSWORD_RECOVERY") { Recovery.start(); location.hash = "#/cuenta/nueva-clave"; }
     if (["SIGNED_IN", "SIGNED_OUT", "USER_UPDATED"].includes(event)) setTimeout(async () => { await loadProfile(); if (event !== "SIGNED_IN") render(); }, 0);
   });
+  startAnalytics();
   window.addEventListener("hashchange", render);
   document.addEventListener("click", (e) => {
     const c = e.target.closest("[data-cookies]");
     if (!c) return;
     if (c.dataset.cookies === "reset") { try { localStorage.removeItem("eb_cookies"); } catch { /* */ } } else setCookieChoice(c.dataset.cookies);
+    startAnalytics();
     render();
   });
   render();

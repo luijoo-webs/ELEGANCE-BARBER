@@ -1,6 +1,6 @@
 /* Núcleo compartido: conexión, estado, utilidades de fecha (America/Bogota), errores y UI básica. */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, TURNSTILE_SITE_KEY } from "./config.js?v=20261105a";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, TURNSTILE_SITE_KEY, GA_ID } from "./config.js?v=20261105b";
 
 export const CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 export const sb = CONFIGURED
@@ -287,7 +287,36 @@ export const waLink = () => {
 // Solo el mapa de Google pone cookies de terceros; la sesión usa almacenamiento local estrictamente necesario.
 export const cookieChoice = () => { try { return localStorage.getItem("eb_cookies"); } catch { return null; } };
 export const setCookieChoice = (v) => { try { localStorage.setItem("eb_cookies", v); } catch { /* modo privado */ } };
-export const mapAllowed = () => cookieChoice() === "all";
+// "all" = aceptó el mapa (botón Ver mapa o la barra antigua, que no mencionaba analítica); "todo" = aceptó también Analytics.
+export const mapAllowed = () => ["all", "todo"].includes(cookieChoice());
+
+/* Analytics: solo con permiso. La dirección se arma a mano para no enviar a Google enlaces privados de citas ni tokens de correo. */
+let gtag = null;
+export const analyticsOn = !!GA_ID;
+const gaPage = () => {
+  const [route = "", a] = location.hash.replace(/^#\/?/, "").split("?")[0].split("/").filter(Boolean);
+  if (route === "" || route === "inicio") return "/";
+  if (route === "reservar") return "/reservar";
+  return ["legal", "servicio", "producto"].includes(route) && a ? `/${route}/${encodeURIComponent(a)}` : null;
+};
+export function startAnalytics() {
+  if (!GA_ID || gtag || cookieChoice() !== "todo") return;
+  window.dataLayer = window.dataLayer || [];
+  gtag = function () { window.dataLayer.push(arguments); };
+  const pageview = () => {
+    const page = gaPage();
+    if (!page) return;
+    gtag("set", "page_location", location.origin + page);
+    gtag("event", "page_view");
+  };
+  gtag("js", new Date());
+  gtag("config", GA_ID, { send_page_view: false, page_location: location.origin + (gaPage() || "/"), allow_google_signals: false, allow_ad_personalization_signals: false });
+  const s = document.createElement("script");
+  s.async = true; s.src = `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`;
+  document.head.append(s);
+  pageview();
+  addEventListener("hashchange", pageview);
+}
 
 export const LEGAL_VERSION = "2026-10-30";   // cámbiala cuando edites términos o privacidad
 export const consentChecks = () => `<div class="consent">

@@ -194,7 +194,7 @@ createServer(async (req, res) => {
   if (req.method === "OPTIONS") return send(res, 204);
   if (url.pathname === "/js/config.js") {
     res.writeHead(200, { "Content-Type": MIME[".js"] });
-    return res.end(`export const SUPABASE_URL = "http://127.0.0.1:${PORT}";\nexport const SUPABASE_ANON_KEY = "dev-anon";\nexport const TURNSTILE_SITE_KEY = "";\n`);
+    return res.end(`export const SUPABASE_URL = "http://127.0.0.1:${PORT}";\nexport const SUPABASE_ANON_KEY = "dev-anon";\nexport const TURNSTILE_SITE_KEY = "";\nexport const GA_ID = ${JSON.stringify(process.env.GA_ID || "")};\n`);
   }
   if (url.pathname.startsWith("/rest/v1/") || url.pathname.startsWith("/auth/v1/")) {
     let raw = ""; for await (const c of req) raw += c;
