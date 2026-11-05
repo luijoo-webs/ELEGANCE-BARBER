@@ -29,6 +29,10 @@ Entra a `https://theelegancebarber.com/#/admin` con una cuenta de administrador.
 - Finanzas
 - Datos del negocio: teléfono, WhatsApp, dirección, redes
 
+**Cambiar el WhatsApp:** en los datos del negocio, pon el número en "Teléfono / celular" y `https://wa.me/57NUMERO` en "Enlace de WhatsApp". Los dos deben coincidir: el Teléfono decide a dónde llega el mensaje de la reserva, y el Enlace, los botones de WhatsApp del sitio.
+
+**Enlace "Ver la cita con fotos":** cada reserva lo incluye en su mensaje de WhatsApp. Quien lo tenga ve la cita sin correo ni celular, hasta 30 días después de la fecha de la cita.
+
 ### En el código (carpeta del proyecto)
 
 | Qué | Archivo |
