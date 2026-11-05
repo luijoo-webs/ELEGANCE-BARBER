@@ -402,4 +402,21 @@ await gate("203.0.113.21", "14:00", "g2@correo.co");
 await fails(as(null, `select book_cart_guest_gate('1.1.1.1', 'X Y', '3001234567', 'x@correo.co', $1::uuid[], null, $2)`, [[barba.id], `${d3}T15:00:00-05:00`]), "permission denied");
 ok("puerta: aplica el límite con la IP recibida y el anónimo no puede llamarla");
 
+console.log("Migración 16 (enlace de cita)");
+const m16 = readFileSync(new URL("../supabase/16_enlace_cita.sql", import.meta.url), "utf8");
+await db.exec(m16); await db.exec(m16);
+const [{ r: bk16 }] = await gate("203.0.113.22", "17:00", "g3@correo.co").then((x) => x.rows);
+const id16 = bk16.ids[0];
+const [{ appointment_link: tok16 }] = await as(null, `select appointment_link($1)`, [id16]);
+assert.ok(tok16.length >= 24);
+const [{ appointment_by_link: pub16 }] = await as(null, `select appointment_by_link($1)`, [tok16]);
+assert.equal(pub16.client_name, "Inv Gate");
+assert.ok(!("client_email" in pub16) && !("client_phone" in pub16));
+assert.equal((await as(null, `select appointment_by_link('corto')`))[0].appointment_by_link, null);
+assert.equal((await as(null, `select appointment_by_link($1)`, ["x".repeat(32)]))[0].appointment_by_link, null);
+await db.query(`update appointments set created_at = now() - interval '1 hour' where id = $1`, [id16]);
+assert.equal((await as(null, `select appointment_link($1)`, [id16]))[0].appointment_link, null);
+await fails(as(null, `select link_token from appointments limit 1`), "permission denied");
+ok("enlace: muestra la cita sin datos de contacto; código falso no sirve; el código no se entrega pasados 30 min");
+
 console.log(`\n${passed} pruebas OK`);

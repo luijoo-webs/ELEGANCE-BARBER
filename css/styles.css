@@ -1115,3 +1115,7 @@ body.is-admin .ticket2 input { min-height: 34px; padding: 5px 9px; background: r
 .paynote--no { background: #f9eeec; color: var(--danger); }
 
 .captcha { min-height: 65px; max-width: 100%; }
+.alink__list { list-style: none; padding: 0; margin: 1rem 0; display: grid; gap: .6rem; }
+.alink__list li { display: flex; gap: .8rem; align-items: center; }
+.alink__list img { width: 76px; height: 76px; object-fit: cover; border-radius: 6px; flex: none; }
+.alink__list b, .alink__list span { display: block; }

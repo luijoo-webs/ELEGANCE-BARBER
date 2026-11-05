@@ -2,8 +2,8 @@
 import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday,
   fmtDay, fmtTime, fmtDate, hhmm, ymd, friendly, toast, loader, emptyState, busy, scheduleByDay, barberWorkDays, waLink, setMsg,
-  mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal, modal, minutes, captchaSlot, bookGuest
-} from "./core.js?v=20261104c";
+  mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal, modal, minutes, captchaSlot, bookGuest, statusBadge, SITE_URL
+} from "./core.js?v=20261104d";
 
 const N = () => State.settings.negocio || {};
 const R = () => State.settings.reservas || {};
@@ -728,8 +728,9 @@ export function mountBooking() {
         const { data, error } = await bookGuest(e.target, { p_name: f.full_name.trim(), p_phone: f.phone.trim(), p_email: f.email.trim(), ...args });
         if (error) return failed(error);
         sb.functions.invoke("notificaciones").catch(() => {});
+        const { data: link_token } = await sb.rpc("appointment_link", { p_id: data.ids[0] });   // si falla, el mensaje sale sin enlace
         const svcs = cartSvcs(b);
-        const row = [{ client_name: f.full_name.trim(), client_phone: f.phone.trim(), services: svcs.map((s) => ({ n: s.name, p: s.price })), price: svcs.every((s) => s.price != null) ? svcs.reduce((t, s) => t + Number(s.price), 0) : null,
+        const row = [{ link_token, client_name: f.full_name.trim(), client_phone: f.phone.trim(), services: svcs.map((s) => ({ n: s.name, p: s.price })), price: svcs.every((s) => s.price != null) ? svcs.reduce((t, s) => t + Number(s.price), 0) : null,
           starts_at: data.starts_at, ends_at: data.ends_at, barber_name: data.barber, status: data.status, extras: extras.length ? extras : null, payment_method: f.pay }];
         booked = true; sendToWa(win, row);
         Booking.clear(); refreshCart();
@@ -764,7 +765,7 @@ const svcLines = (a) => a.services?.length ? a.services : [{ n: a.service_name, 
 const waDigits = () => { const d = String(N().telefono || "").replace(/\D/g, ""); return d.length === 10 ? "57" + d : d; };
 function waMessage(list) {
   const a = list[0], total = list.every((x) => x.price != null) ? list.reduce((t, x) => t + Number(x.price), 0) + extrasTotal(a.extras) : null;
-  return ["Hola, acabo de reservar en la web:", `Nombre: ${a.client_name}`, a.client_phone && `Celular: ${a.client_phone}`,
+  return ["Hola, acabo de reservar en la web:", a.link_token && `Ver la cita con fotos:\n${SITE_URL}#/c/${a.link_token}\n`, `Nombre: ${a.client_name}`, a.client_phone && `Celular: ${a.client_phone}`,
     `Fecha: ${cap(fmtDate(a.starts_at))}`, `Hora: ${fmtTime(a.starts_at)} – ${fmtTime(list.at(-1).ends_at)}`, `Servicios: ${list.flatMap(svcLines).map((x) => x.n).join(", ")}`,
     `Barbero: ${a.barber_name}`, a.extras?.length && `Adicionales: ${extrasText(a.extras)}`, a.payment_method && `Pago: ${a.payment_method}`, total != null && `Total: ${money(total)}`].filter(Boolean).join("\n");
 }
@@ -775,6 +776,25 @@ function sendToWa(win, list) {
   if (win) win.location.href = waBookingUrl(list);
 }
 document.addEventListener("click", (e) => { const c = e.target.closest("[data-wa-copy]"); if (c) navigator.clipboard?.writeText(c.dataset.waCopy).catch(() => {}); });
+
+/* Enlace privado de la cita: solo lectura, con fotos, sin datos de contacto. */
+export async function viewApptLink(token) {
+  const { data: a, error } = await sb.rpc("appointment_by_link", { p_token: token });
+  if (error || !a) return `<section class="wrap narrow">${emptyState("Este enlace no es válido o ya venció.", "", `<a class="btn" href="#/">Ir al inicio</a>`)}</section>`;
+  const svcPic = (x) => svcPhoto(State.services.find((s) => s.name === x.n) || { name: x.n });
+  const shopPic = (x) => { const it = SHOP_ITEMS.find(([n]) => n === x.n); return it ? `assets/tienda/mini/${it[2]}.jpg` : "assets/logo.jpg"; };
+  const card = (img, name, sub) => `<li><img src="${esc(img)}" alt="" loading="lazy"><div><b>${esc(name)}</b><span class="muted small">${esc(sub)}</span></div></li>`;
+  const total = a.price != null ? Number(a.price) + extrasTotal(a.extras) : null;
+  return `<section class="wrap narrow alink">
+    <p class="label">The Elegance of the Barber</p><h1>${esc(cap(fmtDate(a.starts_at)))}</h1>
+    <p>${fmtTime(a.starts_at)} – ${fmtTime(a.ends_at)} ${statusBadge(a.status)}</p>
+    <ul class="alink__list">${svcLines(a).map((x) => card(svcPic(x), x.n, priceLabel(x.p))).join("")}${(a.extras || []).map((x) => card(shopPic(x), x.n, `Cantidad ${x.q} · ${money(x.p)} c/u`)).join("")}</ul>
+    <dl class="sum"><div><dt>Cliente</dt><dd>${esc(a.client_name)}</dd></div><div><dt>Barbero</dt><dd>${esc(a.barber_name)}</dd></div>
+      ${a.payment_method ? `<div><dt>Método de pago</dt><dd>${esc(a.payment_method)}</dd></div>` : ""}
+      ${a.notes ? `<div><dt>Nota</dt><dd>${esc(a.notes)}</dd></div>` : ""}
+      ${total != null ? `<div class="sum__total"><dt>Total</dt><dd>${money(total)}</dd></div>` : ""}</dl>
+  </section>`;
+}
 
 /* Confirmación visual después de reservar (lee la cita real desde Supabase). */
 export async function viewBooked(id) {
