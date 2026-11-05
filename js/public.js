@@ -2,8 +2,8 @@
 import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday,
   fmtDay, fmtTime, fmtDate, hhmm, ymd, friendly, toast, loader, emptyState, busy, scheduleByDay, barberWorkDays, waLink, setMsg,
-  mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal, modal, minutes, captchaSlot, bookGuest, statusBadge, SITE_URL
-} from "./core.js?v=20261104d";
+  mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal, modal, minutes, captchaSlot, bookGuest, statusBadge, SITE_URL, SHOP, SHOP_LIST, SHOP_ITEMS
+} from "./core.js?v=20261105a";
 
 const N = () => State.settings.negocio || {};
 const R = () => State.settings.reservas || {};
@@ -123,8 +123,8 @@ export function viewHome() {
   <section class="section" id="tienda" aria-labelledby="t-shop">
     <div class="wrap">
       ${head("Para después del corte", "t-shop", "")}
-      <p class="muted rv" style="margin:-8px 0 22px">Snacks y bebidas para disfrutar en la barbería. Se pagan allá, junto con tu servicio.</p>
-      <div class="chips rv" role="group" aria-label="Filtrar productos"><button type="button" class="chip is-on" data-cat-filter="" aria-pressed="true">Todos</button>${Object.keys(SHOP).map((c) => `<button type="button" class="chip" data-cat-filter="${c}" aria-pressed="false">${c}</button>`).join("")}</div>
+      <p class="muted rv" style="margin:-8px 0 22px">Snacks, bebidas y productos de barbería. Se pagan allá, junto con tu servicio.</p>
+      <div class="chips rv" role="group" aria-label="Filtrar productos"><button type="button" class="chip is-on" data-cat-filter="" aria-pressed="true">Todos</button>${Object.keys(SHOP).map((c) => `<button type="button" class="chip" data-cat-filter="${esc(c)}" aria-pressed="false">${esc(c)}</button>`).join("")}</div>
       <ul class="catalog">${SHOP_LIST.map(shopCard).join("")}</ul>
     </div>
   </section>
@@ -224,24 +224,12 @@ export function mountHome() {
   play();
 }
 
-// shortcut: productos fijos en código (lista enviada por el dueño); pasarlos a Supabase si el dueño quiere editarlos desde el panel.
-export const SHOP = {
-  Snacks: [["Detodito", 3500, "detodito"], ["Margaritas (pollo, limón, tomate…)", 3000, "margaritas"], ["Natuchip", 3000, "natuchip"], ["Boliquesos", 2500, "boliquesos"],
-    ["Doritos", 3000, "doritos"], ["Cheestris", 2500, "cheestre"], ["Choclitos", 2500, "choclitos"], ["Maní", 2000, "manis"], ["Chokis", 2000, "chockis"]],
-  Cervezas: [["Coronita", 4500, "coronita"], ["Club Colombia", 4500, "club-colombia"], ["Stella Artois botella", 6000, "stella-botella"], ["Stella Artois lata", 5000, "stella-lata"],
-    ["Costeña", 4000, "costena"], ["Miller Lite", 4000, "miller-lite"]],
-  Gaseosas: [["Coca-Cola personal", 3500, "coca-cola"], ["Coca-Cola Zero pequeña", 2000, "coca-zero"], ["Agua saborizada pequeña", 2000, "agua-saborizada"],
-    ["Ginger personal", 3000, "ginger"], ["Sprite personal", 3000, "sprite"], ["Quatro personal", 3000, "quatro-personal"], ["Kola Román pequeña", 2000, "kola-roman"],
-    ["Jugo del Valle", 3500, "jugo-del-valle"], ["Agua personal", 2000, "agua"], ["Quatro pequeña", 2000, "quatro-pequena"], ["Speed Max", 2500, "speed-max"], ["Soda", 3000, "soda"]]
-};
-
-export const SHOP_ITEMS = Object.values(SHOP).flat();
-const SHOP_LIST = Object.entries(SHOP).flatMap(([c, l]) => l.map(([n, p, img]) => ({ n, p, img, c })));
-const pkImg = (img, alt = "") => `<span class="pk"><img src="assets/tienda/${img}.jpg?v=2" alt="${esc(alt)}" loading="lazy"></span>`;   // solo el panel blanco con el empaque
+// Fotos de la lista original: una sola imagen con el empaque recortado por CSS. Las subidas desde el panel se muestran completas.
+const pkImg = (pic, alt = "") => `<span class="pk${pic.startsWith("assets/tienda/") ? "" : " pk--free"}"><img src="${esc(pic)}" alt="${esc(alt)}" loading="lazy"></span>`;
 const fold = (t) => t.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 function shopCard(x, k = 0) {
-  return `<li class="rv" style="--i:${k % 4}" data-cat="${x.c}"><div class="cat-card cat-card--shop">
-    <a class="cat-card__img" href="#/producto/${x.img}" tabindex="-1" aria-hidden="true"><img src="assets/tienda/${x.img}.jpg?v=2" alt="" loading="lazy"><span class="cat-card__tag">${x.c}</span></a>
+  return `<li class="rv" style="--i:${k % 4}" data-cat="${esc(x.c)}"><div class="cat-card cat-card--shop">
+    <a class="cat-card__img" href="#/producto/${x.img}" tabindex="-1" aria-hidden="true"><img src="${esc(x.pic)}" alt="" loading="lazy"><span class="cat-card__tag">${esc(x.c)}</span></a>
     <div class="cat-card__body"><h4><a href="#/producto/${x.img}">${esc(x.n)}</a></h4><div class="cat-card__foot"><span class="cat-card__price">${money(x.p)}</span><button type="button" class="cart-add" data-cart-x="${esc(x.n)}" aria-label="Agregar ${esc(x.n)} al carrito">+ Agregar</button></div></div></div></li>`;
 }
 
@@ -252,9 +240,9 @@ export function viewProduct(slug) {
   const q = Booking.get().extras?.[x.n] || 0, wa = waLink();
   const others = SHOP_LIST.filter((i) => i.c === x.c && i.img !== x.img).slice(0, 4);
   return `<section class="wrap pdp">
-    <nav class="pdp__crumbs" aria-label="Ruta"><a href="#/">Inicio</a> / <a href="#/inicio/tienda">Snacks y bebidas</a> / <span>${esc(x.c)}</span></nav>
+    <nav class="pdp__crumbs" aria-label="Ruta"><a href="#/">Inicio</a> / <a href="#/inicio/tienda">Productos</a> / <span>${esc(x.c)}</span></nav>
     <div class="pdp__grid">
-      <figure class="pdp__img pdp__img--pk">${pkImg(x.img, x.n)}</figure>
+      <figure class="pdp__img pdp__img--pk">${pkImg(x.pic, x.n)}</figure>
       <div class="pdp__info">
         <p class="label">${esc(x.c)}</p>
         <h1>${esc(x.n)}</h1>
@@ -267,6 +255,7 @@ export function viewProduct(slug) {
           ${wa ? `<a class="btn btn--block btn--ghost" href="${esc(wa)}" target="_blank" rel="noopener">Preguntar por WhatsApp</a>` : ""}
         </div>
         <details class="pdp__more" open><summary>Detalles</summary><ul>
+          ${x.d ? `<li>${esc(x.d)}</li>` : ""}
           <li>Categoría: ${esc(x.c)}</li>
           <li>Lo pides junto con tu reserva y te lo entregamos en la barbería.</li>
           <li>Pagas en la barbería, junto con tu servicio.</li>
@@ -282,12 +271,12 @@ export function viewProduct(slug) {
 /* Tienda en ventana: buscador, categorías y cantidades. onClose: para que la reserva actualice su total. */
 function openShop(onClose) {
   const ex = Booking.get().extras || {};
-  const m = modal(`<h2 class="modal__t">Snacks y bebidas</h2>
+  const m = modal(`<h2 class="modal__t">Productos</h2>
     <p class="muted small" style="margin:-8px 0 14px">Te los entregamos en tu cita y se pagan en la barbería.</p>
     <input type="search" class="shop__search" placeholder="Buscar: Coronita, Doritos, agua…" aria-label="Buscar producto">
-    <div class="chips shop__chips" role="group" aria-label="Categorías"><button type="button" class="chip is-on" data-sc="">Todos</button>${Object.keys(SHOP).map((c) => `<button type="button" class="chip" data-sc="${c}">${c}</button>`).join("")}</div>
-    <ul class="shop__grid">${SHOP_LIST.map((x) => `<li data-c="${x.c}" data-f="${esc(fold(x.n + " " + x.c))}" class="${ex[x.n] ? "is-in" : ""}">
-      <a href="#/producto/${x.img}" data-close>${pkImg(x.img)}</a>
+    <div class="chips shop__chips" role="group" aria-label="Categorías"><button type="button" class="chip is-on" data-sc="">Todos</button>${Object.keys(SHOP).map((c) => `<button type="button" class="chip" data-sc="${esc(c)}">${esc(c)}</button>`).join("")}</div>
+    <ul class="shop__grid">${SHOP_LIST.map((x) => `<li data-c="${esc(x.c)}" data-f="${esc(fold(x.n + " " + x.c))}" class="${ex[x.n] ? "is-in" : ""}">
+      <a href="#/producto/${x.img}" data-close>${pkImg(x.pic)}</a>
       <span class="shop__name">${esc(x.n)}</span><span class="shop__price">${money(x.p)}</span>
       <span class="qty"><button type="button" data-sx="${esc(x.n)}" data-d="-1" aria-label="Quitar ${esc(x.n)}" ${ex[x.n] ? "" : "disabled"}>−</button><b>${ex[x.n] || 0}</b><button type="button" data-sx="${esc(x.n)}" data-d="1" aria-label="Agregar ${esc(x.n)}">+</button></span></li>`).join("")}</ul>
     <p class="muted shop__none" hidden>No encontramos ese producto.</p>
@@ -317,7 +306,7 @@ function openShop(onClose) {
 function extrasPromo(ex = {}) {
   const n = Object.values(ex).reduce((t, v) => t + v, 0);
   return `<button type="button" class="xpromo${n ? " is-in" : ""}" id="exPromo" data-shop-open>
-    <span class="xpromo__pics" aria-hidden="true">${["coronita", "doritos", "coca-cola", "detodito", "club-colombia"].map((i) => pkImg(i)).join("")}</span>
+    <span class="xpromo__pics" aria-hidden="true">${["coronita", "doritos", "coca-cola", "detodito", "club-colombia"].map((i) => pkImg(`assets/tienda/${i}.jpg?v=2`)).join("")}</span>
     <span class="xpromo__txt"><b>${n ? "Tus adicionales" : "¿Antojo para después del corte?"}</b>
       <small>${n ? esc(SHOP_ITEMS.filter(([k]) => ex[k]).map(([k]) => `${ex[k]}× ${k}`).join(", ")) : "Cervezas, gaseosas y snacks listos en tu cita"}</small></span>
     <span class="xpromo__cta">${n ? `${money(extrasSum(ex))} · Cambiar` : "Ver productos"} →</span>
@@ -347,24 +336,24 @@ function cartHtml() {
   const snacks = SHOP_ITEMS.filter(([n]) => ex[n]);
   const sSum = svcs.reduce((t, s) => t + Number(s.price || 0), 0), xSum = extrasSum(ex);
   if (!svcs.length && !snacks.length) return `<div class="cart__empty"><p>Tu carrito está vacío.</p><a class="btn btn--block" href="#/inicio/servicios" data-cart-close>Ver servicios</a>
-    <button type="button" class="xpromo xpromo--sm" data-shop-open><span class="xpromo__txt"><b>Snacks y bebidas</b><small>Cervezas, gaseosas y snacks para tu cita</small></span><span class="xpromo__cta">Ver →</span></button></div>`;
+    <button type="button" class="xpromo xpromo--sm" data-shop-open><span class="xpromo__txt"><b>Productos</b><small>Cervezas, gaseosas y snacks para tu cita</small></span><span class="xpromo__cta">Ver →</span></button></div>`;
   const item = (href, pic, name, price, meta, acts) => `<li class="ci"><a class="ci__pic" href="${href}" data-cart-close tabindex="-1" aria-hidden="true">${pic}</a>
     <div class="ci__body"><div class="ci__top"><a class="ci__name" href="${href}" data-cart-close>${esc(name)}</a><span class="ci__price">${price}</span></div><p class="ci__meta">${meta}</p><div class="ci__acts">${acts}</div></div></li>`;
   return `<ul class="cart__list">
     ${svcs.map((s) => item(`#/servicio/${s.id}`, `<img src="${esc(svcPhoto(s))}" alt="">`, s.name, priceLabel(s.price), "Servicio",
       `<span></span><button type="button" class="ci__rm" data-cart-rm="${s.id}" aria-label="Eliminar ${esc(s.name)}">Eliminar</button>`)).join("")}
-    ${snacks.map(([n, p, img]) => item(`#/producto/${img}`, `<img src="assets/tienda/mini/${img}.jpg" alt="">`, n, money(p * ex[n]), `${money(p)} c/u`,
+    ${snacks.map(([n, p, img, , mini]) => item(`#/producto/${img}`, `<img src="${esc(mini)}" alt="">`, n, money(p * ex[n]), `${money(p)} c/u`,
       `<span class="qty qty--box"><button type="button" data-cx="${esc(n)}" data-d="-1" aria-label="Quitar uno">−</button><b>${ex[n]}</b><button type="button" data-cx="${esc(n)}" data-d="1" aria-label="Agregar uno">+</button></span><button type="button" class="ci__rm" data-cx="${esc(n)}" data-d="-10" aria-label="Eliminar ${esc(n)}">Eliminar</button>`)).join("")}
   </ul>
-  <button type="button" class="xpromo xpromo--sm" data-shop-open><span class="xpromo__txt"><b>+ Snacks y bebidas</b><small>Cervezas, gaseosas y snacks para tu cita</small></span><span class="xpromo__cta">Ver →</span></button>
+  <button type="button" class="xpromo xpromo--sm" data-shop-open><span class="xpromo__txt"><b>+ Productos</b><small>Cervezas, gaseosas y snacks para tu cita</small></span><span class="xpromo__cta">Ver →</span></button>
   <div class="cart__foot">
     ${svcs.length ? `<p class="cart__row"><span>Servicios</span><span>${money(sSum)}</span></p>` : ""}
-    ${snacks.length ? `<p class="cart__row"><span>Snacks y bebidas</span><span>${money(xSum)}</span></p>` : ""}
+    ${snacks.length ? `<p class="cart__row"><span>Productos</span><span>${money(xSum)}</span></p>` : ""}
     ${svcs.length ? `<p class="cart__row"><span>Tu cita dura</span><span>${durLabel(Math.max(...svcs.map((s) => s.duration_min)))} en total</span></p>` : ""}
     <p class="cart__row"><span>Pago</span><span class="muted">En la barbería</span></p>
     <p class="cart__total"><span>Total</span><strong>${money(sSum + xSum)}</strong></p>
     ${svcs.length ? `<a class="btn btn--lg btn--block" href="#/reservar" data-cart-close>Reservar · elegir barbero y hora</a>`
-      : `<p class="muted small">Agrega al menos un servicio para reservar; los snacks se entregan en tu cita.</p><a class="btn btn--lg btn--block" href="#/inicio/servicios" data-cart-close>Ver servicios</a>`}
+      : `<p class="muted small">Agrega al menos un servicio para reservar; los productos se entregan en tu cita.</p><a class="btn btn--lg btn--block" href="#/inicio/servicios" data-cart-close>Ver servicios</a>`}
     <button type="button" class="cart__clear" data-cart-empty>Vaciar carrito</button>
   </div>`;
 }
@@ -782,7 +771,7 @@ export async function viewApptLink(token) {
   const { data: a, error } = await sb.rpc("appointment_by_link", { p_token: token });
   if (error || !a) return `<section class="wrap narrow">${emptyState("Este enlace no es válido o ya venció.", "", `<a class="btn" href="#/">Ir al inicio</a>`)}</section>`;
   const svcPic = (x) => svcPhoto(State.services.find((s) => s.name === x.n) || { name: x.n });
-  const shopPic = (x) => { const it = SHOP_ITEMS.find(([n]) => n === x.n); return it ? `assets/tienda/mini/${it[2]}.jpg` : "assets/logo.jpg"; };
+  const shopPic = (x) => { const it = SHOP_ITEMS.find(([n]) => n === x.n); return it ? it[4] : "assets/logo.jpg"; };
   const card = (img, name, sub) => `<li><img src="${esc(img)}" alt="" loading="lazy"><div><b>${esc(name)}</b><span class="muted small">${esc(sub)}</span></div></li>`;
   const total = a.price != null ? Number(a.price) + extrasTotal(a.extras) : null;
   return `<section class="wrap narrow alink">

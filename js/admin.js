@@ -2,13 +2,16 @@
 import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday, ymd, toIso, hhmm,
   fmtTime, fmtDate, fmtDay, fmtDateTime, minutes, fromMinutes, shortTime, STATUS, statusBadge, friendly, toast, loader, emptyState,
-  formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin, extrasText, extrasTotal
-} from "./core.js?v=20261104d";
-import { SHOP, svcPhoto } from "./public.js?v=20261104d";
+  formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin, extrasText, extrasTotal, prodMini
+} from "./core.js?v=20261105a";
+import { svcPhoto } from "./public.js?v=20261105a";
 
+// El tercer dato abre un grupo en el menú.
 const SECTIONS = [
-  ["resumen", "Resumen"], ["agenda", "Agenda"], ["ventas", "Ventas"], ["citas", "Citas"], ["servicios", "Servicios"], ["barberos", "Barberos"],
-  ["clientes", "Clientes"], ["horarios", "Horarios y cierres"], ["configuracion", "Configuración"], ["estadisticas", "Estadísticas"]
+  ["resumen", "Resumen", "Hoy"], ["agenda", "Agenda"], ["citas", "Citas"],
+  ["ventas", "Ventas", "Caja"], ["facturas", "Facturas"], ["inventario", "Inventario"],
+  ["servicios", "Servicios", "Negocio"], ["barberos", "Barberos"], ["clientes", "Clientes"], ["horarios", "Horarios y cierres"],
+  ["estadisticas", "Estadísticas", "Análisis"], ["configuracion", "Configuración"]
 ];
 const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 const q = async (p) => { const { data, error } = await p; if (error) throw error; return data; };
@@ -43,7 +46,7 @@ function stepActions(a, attr) {
 const PAY_NOTE = { pendiente: "Sin pagar · por ver si llega", confirmada: "Sin pagar · por ver si llega", en_proceso: "Sin pagar · en la silla", completada: "Pagada", no_asistio: "No llegó · no pagó" };
 const payNote = (a) => PAY_NOTE[a.status] ? `<p class="paynote paynote--${a.status === "completada" ? "ok" : a.status === "no_asistio" ? "no" : "wait"}">${PAY_NOTE[a.status]}</p>` : "";
 const payMethod = (a) => a.payment_method ? `${a.status === "completada" ? "Pagó con" : a.status === "cancelada" || a.status === "no_asistio" ? "Iba a pagar con" : "Pagará con"} ${esc(a.payment_method)}` : "";
-const stToast = (st) => st === "completada" ? "Cita completada: se sumó a finanzas." : `Estado: ${STATUS[st]}.`;
+const stToast = (st) => st === "completada" ? "Cita cobrada: factura creada y sumada a finanzas." : `Estado: ${STATUS[st]}.`;
 
 /* Tarjeta de cita (Citas y ficha de cliente): foto del servicio, seguimiento y acciones rápidas. */
 function apptCard(a, { client = true } = {}) {
@@ -89,6 +92,8 @@ const ICON = {
   clientes: '<circle cx="9" cy="8" r="3.5"/><path d="M2 20c1-3.5 3.6-5 7-5s6 1.5 7 5M16 4.5a3.5 3.5 0 0 1 0 7M18 15c2 .6 3.3 2.2 4 5"/>',
   horarios: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   configuracion: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  facturas: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/>',
+  inventario: '<path d="M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8"/>',
   actividad: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
   estadisticas: '<path d="M3 21h18M6 17V10M11 17V5M16 17v-4M21 17V8"/>',
   sitio: '<path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/><circle cx="12" cy="12" r="9"/>',
@@ -107,8 +112,7 @@ function shell(sec, title, actions, body) {
   return `<div class="adm">
     <aside class="adm__side">
       <a class="adm__brand" href="#/admin" aria-label="Panel — inicio"><img src="${esc(logo)}" alt=""><span><b>Elegance</b><small>Panel admin</small></span></a>
-      <p class="adm__label">Gestión</p>
-      <nav aria-label="Secciones del panel">${SECTIONS.map(([k, v]) => `<a href="#/admin/${k}" class="${k === sec ? "is-on" : ""}" ${k === sec ? 'aria-current="page"' : ""}>${ico(k)}${v}</a>`).join("")}</nav>
+      <nav aria-label="Secciones del panel">${SECTIONS.map(([k, v, g]) => `${g ? `<p class="adm__label">${g}</p>` : ""}<a href="#/admin/${k}" class="${k === sec ? "is-on" : ""}" ${k === sec ? 'aria-current="page"' : ""}>${ico(k)}${v}</a>`).join("")}</nav>
       <div class="adm__bottom"><a href="#/">${ico("sitio")}Ver sitio</a><a href="#/cuenta">${ico("cuenta")}Mi cuenta</a><a href="#/" data-logout>${ico("salir")}Cerrar sesión</a></div>
     </aside>
     <div class="adm__main"><div class="adm__head"><h1>${title}</h1><div class="row">${actions || ""}</div></div>${body}</div></div>`;
@@ -118,7 +122,7 @@ export async function view(sec, sub, query) {
   if (channel) { sb.removeChannel(channel); channel = null; }
   if (!isAdmin()) return { html: emptyState("No tienes permisos de administrador.") };
   await loadPublic();   // con sesión de admin, RLS devuelve también lo inactivo
-  const views = { resumen: vResumen, agenda: vAgenda, ventas: vVentas, citas: vCitas, servicios: vServicios, barberos: vBarberos, clientes: vClientes,
+  const views = { resumen: vResumen, agenda: vAgenda, ventas: vVentas, facturas: vFacturas, inventario: vInventario, citas: vCitas, servicios: vServicios, barberos: vBarberos, clientes: vClientes,
     horarios: vHorarios, configuracion: vConfig, consentimientos: vConsentimientos, estadisticas: vEstadisticas };
   const fn = views[sec];
   if (!fn) return { html: shell("", "Sección no encontrada", "", emptyState("Esa sección no existe.")) };
@@ -132,11 +136,13 @@ async function vResumen(_, query) {
   const preset = query.p || "30";
   const from = query.desde || (preset === "hoy" ? today : addDays(today, -Number(preset) + 1));
   const to = query.hasta || (preset === "hoy" ? today : addDays(today, 0));
-  const [st, upcoming] = await Promise.all([
+  const [st, upcoming, todayIn] = await Promise.all([
     q(sb.rpc("admin_stats", { p_from: from, p_to: to })),
+    q(sb.from("finance_entries").select("amount").eq("kind", "ingreso").eq("entry_date", today)),
     q(sb.from("appointments").select("*").in("status", ["pendiente", "confirmada"]).gte("starts_at", new Date().toISOString())
       .lt("starts_at", toIso(addDays(today, 1), "00:00")).order("starts_at").limit(30))
   ]);
+  const low = lowStock();
   const { count: pendingAll } = await sb.from("appointments").select("id", { count: "exact", head: true }).eq("status", "pendiente").gte("starts_at", new Date().toISOString());
   const services = State.services, barbers = State.barbers;
   const alerts = [];
@@ -150,7 +156,17 @@ async function vResumen(_, query) {
   const every = Math.ceil(st.por_dia.length / 15);
   const bars = (list) => { const m = Math.max(1, ...list.map((x) => x.n)); return list.length ? `<div class="bars">${list.map((x) => `<div class="bar"><span class="bar__label" title="${esc(x.nombre)}">${esc(x.nombre)}</span><span class="bar__track"><span class="bar__fill" style="width:${(x.n / m) * 100}%"></span></span><span class="bar__n">${x.n}</span></div>`).join("")}</div>` : `<p class="muted">Sin citas en el periodo.</p>`; };
 
-  const html = shell("resumen", "Resumen", `<a class="btn btn--sm" href="#/admin/agenda">Abrir agenda</a>`, `
+  const html = shell("resumen", "Resumen", "", `
+    <section class="today">
+      <div class="today__top"><div><span>${esc(cap(fmtDay(today, { weekday: "long", day: "numeric", month: "long" })))}</span><h2>Así va tu día</h2></div>
+        <div class="today__acts"><a class="btn btn--sm btn--light" href="#/admin/ventas">Nueva venta</a><a class="btn btn--sm btn--ghost" href="#/admin/agenda">Agenda</a><a class="btn btn--sm btn--ghost" href="#/admin/inventario">Inventario</a></div></div>
+      <div class="today__nums">
+        <div><b>${money(todayIn.reduce((t, r) => t + Number(r.amount), 0))}</b><small>Cobrado hoy</small></div>
+        <div><b>${st.hoy}</b><small>Citas de hoy</small></div>
+        <div><b>${upcoming.length}</b><small>Por atender</small></div>
+        <a href="#/admin/inventario?f=bajo"><b>${low.length}</b><small>Productos por agotarse</small></a>
+      </div>
+    </section>
     ${alerts.map((a) => `<div class="notice notice--warn">${a}</div>`).join("")}
     <form class="toolbar" id="rangeForm">
       <div class="seg" role="group" aria-label="Periodo">${[["hoy", "Hoy"], ["7", "7 días"], ["30", "30 días"], ["90", "90 días"]].map(([k, v]) => `<button type="button" data-p="${k}" class="${!query.desde && preset === k ? "is-on" : ""}">${v}</button>`).join("")}</div>
@@ -173,6 +189,7 @@ async function vResumen(_, query) {
     </div>
     <div class="cards-2">
       <div class="card"><h2>Próximas citas de hoy</h2>${upcoming.length ? `<ul class="log" style="list-style:none;padding:0;margin:0">${upcoming.map((a) => `<li><a href="#/admin/agenda?fecha=${today}" style="text-decoration:none"><strong>${fmtTime(a.starts_at)}</strong> · ${esc(a.client_name)} · ${esc(a.service_name)} · ${esc(a.barber_name)}</a> ${statusBadge(a.status)}</li>`).join("")}</ul>` : `<p class="muted">No quedan citas hoy.</p>`}</div>
+      <div class="card"><h2>Productos por agotarse</h2>${low.length ? `<ul class="lowlist">${low.slice(0, 8).map((p) => `<li><span>${esc(p.name)}</span><b>${p.stock === 0 ? "Agotado" : `Quedan ${p.stock}`}</b></li>`).join("")}</ul><a class="btn btn--sm btn--ghost" href="#/admin/inventario?f=bajo">Ver inventario</a>` : `<p class="muted">Nada por agotarse. Los productos sin contar no aparecen aquí: escribe sus existencias en Inventario.</p>`}</div>
       <div class="card"><h2>Valor de servicios completados</h2>
         ${st.valor_completadas != null ? `<strong style="font:800 2rem var(--sans)">${money(st.valor_completadas)}</strong>` : `<p class="muted">Sin datos.</p>`}
         <p class="muted small">Estimación: suma el precio registrado al reservar de las citas marcadas como <b>completadas</b>. No es un registro de pagos: la web no cobra en línea.${st.completadas_sin_precio ? ` ${st.completadas_sin_precio} completada(s) sin precio no suman.` : ""}</p></div>
@@ -390,6 +407,7 @@ async function apptDetail(id) {
   const a = await q(sb.from("appointments").select("*").eq("id", id).single()).catch((e) => { toast(friendly(e), "err"); });
   if (!a) return;
   const active = ["pendiente", "confirmada"].includes(a.status);
+  const inv = a.status === "completada" ? (await sb.from("invoices").select("id").eq("appointment_id", a.id).is("voided_at", null).maybeSingle()).data : null;
   const m = modal(`<h2 class="modal__t">${esc(a.client_name || "Cliente")} ${statusBadge(a.status)}</h2>
     <dl class="kv">
       <dt>Servicio</dt><dd>${esc(a.service_name)} · ${durLabel(a.duration_min)}</dd>
@@ -408,6 +426,7 @@ async function apptDetail(id) {
     ${stepper(a, "data-st")}
     <div class="row" style="margin:18px 0">
       ${stepActions(a, "data-st")}
+      ${inv ? `<button class="btn btn--sm" type="button" data-inv="${inv.id}">Ver factura</button>` : ""}
       ${active ? `<button class="btn btn--sm btn--ghost" data-edit>Reprogramar / editar</button><button class="btn btn--sm btn--ghost btn--danger-text" data-st="cancelada">Cancelar cita</button>` : ""}
       ${["cancelada", "completada", "no_asistio"].includes(a.status) ? `<button class="btn btn--sm btn--ghost btn--danger-text" data-del>Eliminar definitivamente</button>` : ""}
     </div>
@@ -415,6 +434,7 @@ async function apptDetail(id) {
       <button class="btn btn--sm btn--ghost" type="submit">Guardar nota</button></form>`, { wide: true });
   m.el.addEventListener("click", async (e) => {
     if (e.target.closest("[data-edit]")) { m.close(); return apptEditor({ appt: a }); }
+    if (e.target.closest("[data-inv]")) { m.close(); return invoiceModal(inv.id); }
     if (e.target.closest("[data-del]")) {
       if (!(await confirmDialog(`¿Eliminar definitivamente la cita de ${a.client_name || "este cliente"} (${fmtDate(a.starts_at)} ${fmtTime(a.starts_at)})?${a.status === "completada" ? " También se quita de finanzas y estadísticas lo que sumó." : ""} No se puede deshacer.`, "Eliminar cita", true))) return;
       const { error } = await sb.rpc("admin_delete_appointment", { p_id: a.id });
@@ -1113,6 +1133,145 @@ function financeEditor(r = {}) {
   });
 }
 
+/* =============================== FACTURAS =============================== */
+const invNo = (n) => `Nº ${String(n).padStart(5, "0")}`;
+function invoiceDoc(i) {
+  const n = State.settings.negocio || {};
+  return `<article class="invdoc">
+    <header><img src="assets/logo.jpg" alt=""><div><b>${esc(n.nombre || "The Elegance of the Barber")}</b>${n.direccion ? `<small>${esc(n.direccion)}</small>` : ""}${n.telefono ? `<small>${esc(n.telefono)}</small>` : ""}</div>
+      <p><span>Factura</span><strong>${invNo(i.number)}</strong></p></header>
+    ${i.voided_at ? `<p class="invdoc__void">Anulada el ${esc(fmtDateTime(i.voided_at))}</p>` : ""}
+    <dl><div><dt>Fecha</dt><dd>${esc(fmtDateTime(i.issued_at))}</dd></div><div><dt>Cliente</dt><dd>${esc(i.client_name || "Consumidor final")}</dd></div>
+      ${i.barber_name ? `<div><dt>Atendió</dt><dd>${esc(i.barber_name)}</dd></div>` : ""}${i.method ? `<div><dt>Pago</dt><dd>${esc(i.method)}</dd></div>` : ""}</dl>
+    <table><thead><tr><th>Detalle</th><th>Cant.</th><th>Valor</th><th>Total</th></tr></thead><tbody>${i.items.map((l) => `<tr><td>${esc(l.n)}</td><td>${l.q}</td><td>${money(l.p)}</td><td>${money(l.q * l.p)}</td></tr>`).join("")}</tbody>
+      <tfoot><tr><td colspan="3">Total</td><td>${money(i.total)}</td></tr></tfoot></table>
+    <p class="invdoc__thanks">¡Gracias por tu visita!</p>
+    <small class="invdoc__legal">Documento de venta de la barbería. No reemplaza la factura electrónica de la DIAN.</small>
+  </article>`;
+}
+async function invoiceModal(id) {
+  const i = await q(sb.from("invoices").select("*").eq("id", id).single()).catch((e) => { toast(friendly(e), "err"); });
+  if (!i) return;
+  const state = i.voided_at ? "" : i.email_sent_at ? `Enviada a ${esc(i.client_email)} el ${esc(fmtDateTime(i.email_sent_at))}.` : i.client_email ? `Se enviará a ${esc(i.client_email)} en unos minutos.` : "Sin correo: escribe uno para enviársela.";
+  const m = modal(`${invoiceDoc(i)}
+    <div class="no-print invdoc__acts"><button class="btn" type="button" data-print>Imprimir o guardar PDF</button>
+      ${i.voided_at ? "" : `<form class="invdoc__mail" id="invMail" novalidate><label class="field"><span>Enviar por correo</span><input name="email" type="email" required maxlength="120" value="${esc(i.client_email)}" placeholder="cliente@correo.com"></label><button class="btn btn--ghost" type="submit" data-busy="Guardando…">${i.email_sent_at ? "Reenviar" : "Enviar"}</button></form>
+      <p class="muted small" id="invMsg" role="status">${state}</p>`}</div>`, { wide: true });
+  $("[data-print]", m.el).addEventListener("click", () => window.print());
+  $("#invMail", m.el)?.addEventListener("submit", (e) => {
+    e.preventDefault(); const email = formData(e.target).email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return setMsg($("#invMsg", m.el), "Escribe un correo válido.");
+    busy(e.submitter, async () => {
+      const { error } = await sb.from("invoices").update({ client_email: email, email_sent_at: null }).eq("id", i.id);
+      setMsg($("#invMsg", m.el), error ? friendly(error) : `Se enviará a ${email} en unos minutos.`, !error);
+    });
+  });
+}
+async function vFacturas() {
+  // shortcut: solo las 200 más recientes; agregar paginación si la barbería llega a necesitar más atrás.
+  const rows = await q(sb.from("invoices").select("*").order("number", { ascending: false }).limit(200));
+  const live = rows.filter((r) => !r.voided_at), today = todayYmd(), sumOf = (l) => l.reduce((t, r) => t + Number(r.total), 0);
+  const ofToday = live.filter((r) => ymd(new Date(r.issued_at)) === today);
+  const html = shell("facturas", "Facturas", `<a class="btn btn--sm" href="#/admin/ventas">Nueva venta</a>`, `
+    <div class="kpis"><div class="kpi"><span>Facturado hoy</span><strong>${money(sumOf(ofToday))}</strong><small>${ofToday.length} factura(s)</small></div>
+      <div class="kpi"><span>Este mes</span><strong>${money(sumOf(live.filter((r) => ymd(new Date(r.issued_at)).slice(0, 7) === today.slice(0, 7))))}</strong><small>sin anuladas</small></div>
+      <div class="kpi"><span>Sin correo</span><strong>${live.filter((r) => !r.client_email).length}</strong><small>no se les pudo enviar</small></div></div>
+    ${rows.length ? `<div class="toolbar"><input type="search" class="grow" id="invQ" placeholder="Buscar por número, cliente o correo…" aria-label="Buscar factura"></div>
+    <div class="table-wrap card"><table class="invlist"><thead><tr><th>Factura</th><th>Fecha</th><th>Cliente</th><th>Pago</th><th>Correo</th><th>Total</th></tr></thead><tbody>${rows.map((r) => `<tr class="${r.voided_at ? "off" : ""}" data-id="${r.id}" tabindex="0" data-f="${esc(`${r.number} ${r.client_name || ""} ${r.client_email || ""}`.toLowerCase())}">
+      <td><b>${invNo(r.number)}</b>${r.voided_at ? " <small>anulada</small>" : ""}</td><td>${esc(fmtDateTime(r.issued_at))}</td><td>${esc(r.client_name || "Consumidor final")}</td><td>${esc(r.method || "—")}</td><td>${r.voided_at ? "—" : r.email_sent_at ? "Enviada" : r.client_email ? "Por enviar" : "Sin correo"}</td><td><b>${money(r.total)}</b></td></tr>`).join("")}</tbody></table></div>`
+    : emptyState("Aún no hay facturas.", "Se crean solas al cobrar una cita o registrar una venta.")}`);
+  const mount = () => {
+    $("#invQ")?.addEventListener("input", (e) => { const t = e.target.value.trim().toLowerCase(); $$(".invlist tbody tr").forEach((r) => { r.hidden = !r.dataset.f.includes(t); }); });
+    const open = (e) => { const r = e.target.closest("tr[data-id]"); if (r && (e.type === "click" || e.key === "Enter")) invoiceModal(r.dataset.id); };
+    $(".invlist")?.addEventListener("click", open); $(".invlist")?.addEventListener("keydown", open);
+  };
+  return { html, mount };
+}
+
+/* =============================== INVENTARIO =============================== */
+const lowStock = () => State.products.filter((p) => p.active && p.stock != null && p.stock <= p.min_stock);
+const stockPill = (p) => p.stock == null ? `<span class="pill">Sin contar</span>` : p.stock === 0 ? `<span class="pill pill--no">Agotado</span>` : p.stock <= p.min_stock ? `<span class="pill pill--low">Por agotarse</span>` : `<span class="pill pill--ok">Disponible</span>`;
+async function vInventario(_, query) {
+  const all = State.products, cats = [...new Set(all.map((p) => p.category))];
+  const list = all.filter((p) => (!query.c || p.category === query.c) && (query.f !== "bajo" || lowStock().includes(p)) && (query.f !== "contar" || p.stock == null));
+  const base = "#/admin/inventario", link = (patch) => hrefWith(base, query, patch);
+  const html = shell("inventario", "Inventario", `<button class="btn btn--sm" id="newProd" type="button">Nuevo producto</button>`, `
+    <div class="kpis"><div class="kpi"><span>Productos</span><strong>${all.length}</strong><small>${all.filter((p) => p.active).length} publicados</small></div>
+      <div class="kpi"><span>Unidades</span><strong>${all.reduce((t, p) => t + (p.stock || 0), 0)}</strong><small>contadas</small></div>
+      <div class="kpi"><span>Por agotarse</span><strong>${lowStock().length}</strong><small>incluye agotados</small></div>
+      <div class="kpi"><span>Sin contar</span><strong>${all.filter((p) => p.stock == null).length}</strong><small>escribe sus existencias</small></div></div>
+    <div class="toolbar"><div class="seg"><a href="${link({ f: "" })}" class="${query.f ? "" : "is-on"}">Todos</a><a href="${link({ f: "bajo" })}" class="${query.f === "bajo" ? "is-on" : ""}">Por agotarse</a><a href="${link({ f: "contar" })}" class="${query.f === "contar" ? "is-on" : ""}">Sin contar</a></div>
+      <div class="chips"><a class="chip ${query.c ? "" : "is-on"}" href="${link({ c: "" })}">Todas</a>${cats.map((c) => `<a class="chip ${query.c === c ? "is-on" : ""}" href="${link({ c })}">${esc(c)}</a>`).join("")}</div></div>
+    ${list.length ? `<div class="prods">${list.map((p) => `<article class="prod${p.active ? "" : " is-off"}" data-id="${p.id}">
+      <img src="${esc(prodMini(p.image_url))}" alt="" loading="lazy">
+      <div class="prod__info"><small>${esc(p.category)}${p.active ? "" : " · Oculto"}</small><b>${esc(p.name)}</b><span>${money(p.price)}</span></div>
+      <div class="prod__stock"><span data-pill>${stockPill(p)}</span><span class="qty qty--box"><button type="button" data-d="-1" aria-label="Restar uno a ${esc(p.name)}">−</button><input type="number" min="0" step="1" inputmode="numeric" data-count value="${p.stock ?? ""}" placeholder="—" aria-label="Existencias de ${esc(p.name)}"><button type="button" data-d="1" aria-label="Sumar uno a ${esc(p.name)}">+</button></span></div>
+      <div class="prod__acts"><button class="btn btn--sm btn--ghost" data-edit type="button">Editar</button><button class="btn btn--sm btn--ghost" data-toggle type="button">${p.active ? "Ocultar" : "Publicar"}</button><button class="btn btn--sm btn--ghost btn--danger-text" data-del type="button">Eliminar</button></div></article>`).join("")}</div>`
+    : emptyState("No hay productos en esta vista.", "Crea uno con “Nuevo producto”.")}`);
+  const mount = () => {
+    $("#newProd").addEventListener("click", () => productEditor());
+    const paintStock = (row, p) => { $("[data-count]", row).value = p.stock ?? ""; $("[data-pill]", row).innerHTML = stockPill(p); };
+    const prods = $(".prods"); if (!prods) return;
+    prods.addEventListener("change", async (e) => {
+      if (!e.target.matches("[data-count]")) return;
+      const row = e.target.closest("[data-id]"), p = all.find((x) => x.id === row.dataset.id), v = e.target.value.trim();
+      const stock = v === "" ? null : Math.max(0, Math.trunc(Number(v)) || 0);
+      const { error } = await sb.from("products").update({ stock }).eq("id", p.id);
+      if (error) { paintStock(row, p); return toast(friendly(error), "err"); }
+      p.stock = stock; paintStock(row, p); toast("Existencias guardadas.");
+    });
+    prods.addEventListener("click", async (e) => {
+      const t = e.target.closest("button"); if (!t) return;
+      const row = t.closest("[data-id]"), p = all.find((x) => x.id === row.dataset.id);
+      if (t.dataset.d) {
+        const { data, error } = await sb.rpc("admin_stock", { p_id: p.id, p_delta: Number(t.dataset.d) });
+        if (error) return toast(friendly(error), "err");
+        p.stock = data; return paintStock(row, p);
+      }
+      if ("edit" in t.dataset) productEditor(p);
+      if ("toggle" in t.dataset) await save(sb.from("products").update({ active: !p.active }).eq("id", p.id), p.active ? "Producto oculto de la web." : "Producto publicado.");
+      if ("del" in t.dataset && await confirmDialog(`¿Eliminar "${p.name}"? Deja de verse en la web y en la caja; las citas y facturas anteriores lo conservan.`, "Eliminar", true))
+        await save(sb.from("products").update({ deleted_at: new Date().toISOString(), active: false }).eq("id", p.id), "Producto eliminado.");
+    });
+  };
+  return { html, mount };
+}
+function productEditor(p = null) {
+  const cats = [...new Set(State.products.map((x) => x.category))];
+  const m = modal(`<h2 class="modal__t">${p ? "Editar producto" : "Nuevo producto"}</h2>
+    <form class="form" id="prodForm" novalidate>
+      <label class="field"><span>Nombre</span><input name="name" required maxlength="60" value="${esc(p?.name)}"></label>
+      <div class="grid-2">
+        <label class="field"><span>Categoría (elige o escribe una nueva)</span><input name="category" required maxlength="40" list="prodCats" value="${esc(p?.category)}"><datalist id="prodCats">${cats.map((c) => `<option value="${esc(c)}">`).join("")}</datalist></label>
+        <label class="field"><span>Precio en COP</span><input type="number" name="price" required min="0" step="100" inputmode="numeric" value="${p?.price ?? ""}"></label>
+        <label class="field"><span>Existencias (vacío = sin contar)</span><input type="number" name="stock" min="0" step="1" inputmode="numeric" value="${p?.stock ?? ""}"></label>
+        <label class="field"><span>Avisar cuando queden</span><input type="number" name="min_stock" min="0" step="1" inputmode="numeric" value="${p?.min_stock ?? 3}"></label>
+      </div>
+      <label class="field"><span>Descripción (opcional)</span><textarea name="description" rows="2" maxlength="600">${esc(p?.description)}</textarea></label>
+      ${imgField("image", /^https?:/.test(p?.image_url || "") ? p.image_url : null, "Foto (opcional)")}
+      <label class="check"><input type="checkbox" name="active" ${p?.active === false ? "" : "checked"}> Publicado en la web y en la caja</label>
+      <button class="btn btn--block" type="submit" data-busy="Guardando…">Guardar</button><p class="form-msg" id="prodMsg" role="alert"></p>
+    </form>`, { wide: true });
+  $("#prodForm", m.el).addEventListener("submit", (e) => {
+    e.preventDefault(); const form = e.target, f = formData(form), msg = $("#prodMsg", m.el);
+    if (!f.name.trim()) return setMsg(msg, "Escribe el nombre.");
+    if (!f.category.trim()) return setMsg(msg, "Escribe la categoría.");
+    if (!(f.price !== "" && Number(f.price) >= 0)) return setMsg(msg, "Escribe un precio válido.");
+    if (f.stock !== "" && !(Number.isInteger(Number(f.stock)) && Number(f.stock) >= 0)) return setMsg(msg, "Las existencias deben ser un número entero.");
+    busy(e.submitter, async () => {
+      try {
+        const file = form.image?.files?.[0];
+        const image_url = file ? await uploadImage(file, "productos") : form.image_quitar?.checked ? null : p?.image_url || null;
+        const row = { name: f.name.trim(), category: f.category.trim(), price: Number(f.price), stock: f.stock === "" ? null : Number(f.stock), min_stock: Math.max(0, Math.trunc(Number(f.min_stock)) || 0),
+          description: f.description.trim() || null, active: form.active.checked, image_url };
+        const { error } = p ? await sb.from("products").update(row).eq("id", p.id) : await sb.from("products").insert(row);
+        if (error) throw error;
+        m.close(); toast("Producto guardado."); refresh();
+      } catch (err) { setMsg(msg, err.code === "23505" ? "Ya existe un producto con ese nombre." : err.message?.startsWith("Formato") || err.message?.startsWith("La imagen") ? err.message : friendly(err)); }
+    });
+  });
+}
+
 /* Ventas en el local (cliente que llega sin cita): caja visual. Se guardan como ingresos en finanzas. */
 const SALE_PAY = [["Efectivo", '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/>'], ["Nequi", '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/>'],
   ["Transferencia", '<path d="M4 8h15l-4-4M20 16H5l4 4"/>'], ["Tarjeta", '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>']];
@@ -1123,9 +1282,9 @@ async function vVentas() {
   const dayTotal = sales.reduce((t, r) => t + Number(r.amount), 0);
   const catalog = [
     ...svcs.map((s) => ({ key: `s:${s.id}`, tab: "Servicios", n: s.name, p: s.price == null ? null : Number(s.price), img: svcPhoto(s), svc: true })),
-    ...Object.entries(SHOP).flatMap(([c, l]) => l.map(([n, p, img]) => ({ key: `x:${img}`, tab: c, n, p, img: `assets/tienda/mini/${img}.jpg`, svc: false })))
+    ...State.products.filter((p) => p.active).map((p) => ({ key: `x:${p.id}`, tab: p.category, n: p.name, p: Number(p.price), img: prodMini(p.image_url), svc: false, stock: p.stock }))
   ];
-  const tabs = ["Servicios", ...Object.keys(SHOP)], cart = new Map();
+  const tabs = ["Servicios", ...new Set(State.products.filter((p) => p.active).map((p) => p.category))], cart = new Map();
   const html = shell("ventas", "Ventas", "", `
     <div class="pos__today">
       <div><span>Vendido hoy</span><b>${money(dayTotal)}</b></div>
@@ -1134,10 +1293,10 @@ async function vVentas() {
     <div class="pos">
       <section class="pos__cat">
         <input type="search" class="shop__search" id="posQ" placeholder="Buscar servicio o producto…" aria-label="Buscar">
-        <div class="chips" role="group" aria-label="Categorías">${tabs.map((t, i) => `<button type="button" class="chip ${i ? "" : "is-on"}" data-tab="${t}">${t}</button>`).join("")}</div>
-        <div class="tiles">${catalog.map((c) => `<button type="button" class="tile${c.svc ? "" : " tile--pk"}" data-add="${c.key}" data-tab2="${c.tab}" data-f="${esc(c.n.toLowerCase())}" ${c.tab === "Servicios" ? "" : "hidden"}>
+        <div class="chips" role="group" aria-label="Categorías">${tabs.map((t, i) => `<button type="button" class="chip ${i ? "" : "is-on"}" data-tab="${esc(t)}">${esc(t)}</button>`).join("")}</div>
+        <div class="tiles">${catalog.map((c) => `<button type="button" class="tile${c.svc ? "" : " tile--pk"}" data-add="${c.key}" data-tab2="${esc(c.tab)}" data-f="${esc(c.n.toLowerCase())}" ${c.tab === "Servicios" ? "" : "hidden"}>
           <span class="tile__pic"><img src="${esc(c.img)}" alt="" loading="lazy"></span><span class="tile__n" hidden></span>
-          <span class="tile__name">${esc(c.n)}</span><span class="tile__price">${c.p == null ? "Precio libre" : money(c.p)}</span></button>`).join("")}</div>
+          <span class="tile__name">${esc(c.n)}</span><span class="tile__price">${c.p == null ? "Precio libre" : money(c.p)}${c.stock != null ? ` · ${c.stock ? `quedan ${c.stock}` : "agotado"}` : ""}</span></button>`).join("")}</div>
         <div class="card pos__hist"><h2>Últimas ventas de hoy</h2>${sales.length ? `<ul>${sales.slice(0, 12).map((r) => `<li><span>${esc(r.description.replace(/^Venta( adicionales)?: /, ""))}${r.notes ? `<small>${esc(r.notes)}</small>` : ""}</span><b>${money(r.amount)}</b></li>`).join("")}</ul><p class="muted small">Para editar o borrar una venta, ve a Estadísticas.</p>` : `<p class="muted">Aún no hay ventas hoy. ¡La primera se registra en segundos!</p>`}</div>
       </section>
       <aside class="ticket2" id="ticket">
@@ -1146,6 +1305,7 @@ async function vVentas() {
         <div class="ticket2__sec"><span>Atendió</span><div class="tpills">${barbers.map((b) => `<button type="button" class="tpill" data-barber="${b.id}">${avatar(b.name, b.photo_url)}${esc(b.name)}</button>`).join("") || `<small>Sin barberos activos</small>`}</div></div>
         <div class="ticket2__sec"><span>Medio de pago</span><div class="tpay">${SALE_PAY.map(([m, ic], i) => `<button type="button" class="${i ? "" : "is-on"}" data-pay="${m}"><svg viewBox="0 0 24 24" aria-hidden="true">${ic}</svg>${m}</button>`).join("")}</div></div>
         <div class="ticket2__row"><label><span>Cliente (opcional)</span><input id="tkClient" maxlength="80" placeholder="Nombre"></label><label><span>Fecha</span><input id="tkDate" type="date" value="${today}" max="${today}"></label></div>
+        <label class="ticket2__mail"><span>Correo para enviarle la factura (opcional)</span><input id="tkEmail" type="email" maxlength="120" placeholder="cliente@correo.com" autocomplete="off"></label>
         <button class="pos__jump" id="tkJump" type="button" hidden>Ver venta <b id="tkJumpN"></b></button>
         <button class="ticket2__pay" id="tkPay" type="button" data-busy="Guardando…" disabled>Cobrar <b id="tkTotal">${money(0)}</b></button>
         <p class="form-msg" id="tkMsg" role="alert"></p>
@@ -1187,16 +1347,13 @@ async function vVentas() {
       const lines = [...cart.values()], msg = $("#tkMsg"), day = $("#tkDate").value;
       if (lines.some((l) => !(l.p > 0))) return setMsg(msg, "Escribe el precio de cada servicio.");
       if (!day) return setMsg(msg, "Indica la fecha.");
-      const base = { kind: "ingreso", entry_date: day, method, notes: [barber ? barberName(barber) : "", $("#tkClient").value.trim()].filter(Boolean).join(" · ") || null };
-      const prods = lines.filter((l) => !l.svc), sum = total();
-      const rows = [
-        ...lines.filter((l) => l.svc).map((l) => ({ ...base, description: `Venta: ${l.n}${l.q > 1 ? ` ×${l.q}` : ""}`.slice(0, 200), category: "Servicios", amount: l.p * l.q })),
-        ...(prods.length ? [{ ...base, description: `Venta adicionales: ${prods.map((l) => `${l.q}× ${l.n}`).join(", ")}`.slice(0, 200), category: "Venta de productos", amount: prods.reduce((t, l) => t + l.p * l.q, 0) }] : [])
-      ];
+      const sum = total(), mailTo = $("#tkEmail").value.trim();
       busy(e.currentTarget, async () => {
-        const { error } = await sb.from("finance_entries").insert(rows);
+        const { data, error } = await sb.rpc("admin_sale", { p_lines: lines.map((l) => ({ n: l.n, q: l.q, p: l.p, svc: l.svc })), p_method: method, p_day: day,
+          p_barber: barber ? barberName(barber) : null, p_client: $("#tkClient").value.trim() || null, p_email: mailTo || null });
         if (error) return setMsg(msg, friendly(error));
-        $("#ticket").innerHTML = `<div class="ticket2__done"><span class="ticket2__check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><h2>¡Venta registrada!</h2><p class="ticket2__big">${money(sum)}</p><p>${esc(method)} · sumado a finanzas</p><button class="ticket2__pay" type="button" id="tkNew">Nueva venta</button></div>`;
+        $("#ticket").innerHTML = `<div class="ticket2__done"><span class="ticket2__check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><h2>¡Venta registrada!</h2><p class="ticket2__big">${money(sum)}</p><p>${esc(method)} · Factura ${invNo(data.number)}${mailTo ? `<br>Se enviará a ${esc(mailTo)}` : ""}</p><button class="btn btn--block btn--ghost" type="button" id="tkInv">Ver factura</button><button class="ticket2__pay" type="button" id="tkNew">Nueva venta</button></div>`;
+        $("#tkInv").addEventListener("click", () => invoiceModal(data.id));
         $("#tkNew").addEventListener("click", refresh); $("#tkNew").focus(); $("#ticket").scrollIntoView({ block: "center" });
       });
     });

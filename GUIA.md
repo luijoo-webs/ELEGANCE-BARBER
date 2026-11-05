@@ -23,6 +23,9 @@ Visitante → Cloudflare (dominio, HTTPS, filtro de tráfico) → GitHub Pages (
 Entra a `https://theelegancebarber.com/#/admin` con una cuenta de administrador.
 
 - Citas, estados y pagos
+- **Ventas:** caja para quien llega sin cita. Al cobrar crea la factura y descuenta el inventario
+- **Facturas:** se crean solas al cobrar una cita o una venta. Se imprimen o se guardan en PDF desde ahí. Si hay correo, el cliente recibe el agradecimiento con su factura en unos 5 minutos
+- **Inventario:** agregar productos con foto, precio y categoría (por ejemplo Ceras), ocultarlos y llevar existencias
 - Servicios y precios
 - Barberos y horarios
 - Galería
@@ -32,6 +35,10 @@ Entra a `https://theelegancebarber.com/#/admin` con una cuenta de administrador.
 **Cambiar el WhatsApp:** en los datos del negocio, pon el número en "Teléfono / celular" y `https://wa.me/57NUMERO` en "Enlace de WhatsApp". Los dos deben coincidir: el Teléfono decide a dónde llega el mensaje de la reserva, y el Enlace, los botones de WhatsApp del sitio.
 
 **Enlace "Ver la cita con fotos":** cada reserva lo incluye en su mensaje de WhatsApp. Quien lo tenga ve la cita sin correo ni celular, hasta 30 días después de la fecha de la cita.
+
+**Inventario:** un producto "Sin contar" no se descuenta ni se agota. Cuando escribas sus existencias, cada cita cobrada o venta las descuenta, y al llegar a 0 se oculta solo de la web. Deshacer una cita cobrada devuelve las unidades y anula su factura.
+
+**Facturas:** son documentos de venta de la barbería, no factura electrónica de la DIAN. Si el negocio está obligado a facturar electrónicamente, eso se hace aparte.
 
 ### En el código (carpeta del proyecto)
 
@@ -46,7 +53,8 @@ Entra a `https://theelegancebarber.com/#/admin` con una cuenta de administrador.
 | Conexión a Supabase (solo clave pública) | `js/config.js` |
 | Fotos y logos | `assets/` |
 | Título, descripción y política de seguridad (CSP) | `index.html` |
-| Diseño y texto de los correos | `supabase/functions/notificaciones/index.ts` |
+| Correos de citas y facturas | `supabase/functions/notificaciones/index.ts` |
+| Correos de cuenta (confirmar, contraseña, cambio de correo) | `supabase/correos/`; se pegan en Supabase → Authentication → Emails → Templates |
 | Reglas de la base de datos | `supabase/*.sql`, en orden numérico |
 
 **Para publicar:**
@@ -86,7 +94,8 @@ Entra a `https://theelegancebarber.com/#/admin` con una cuenta de administrador.
 - **Cloudflare** protege la web: DDoS, bots simples, HTTPS.
 - **Cloudflare no protege la API de Supabase.** La web la llama directo a `supabase.co`. Esa capa queda con la protección propia de Supabase y con las reglas de la base de datos.
 - **RLS y funciones de la base de datos** protegen los datos: cada cliente solo ve lo suyo y el visitante anónimo no puede leer citas ni finanzas.
-- **Reservas sin cuenta:** máximo 5 por hora desde una misma IP (`supabase/13_seguridad.sql`).
+- **Reservas sin cuenta:** pasan por la verificación de Cloudflare (Turnstile, invisible salvo que dude) y por la función `reservar` del servidor, con máximo 5 por hora desde una misma IP (`supabase/13_seguridad.sql`, `14` y `15`).
+- **Crear cuenta e iniciar sesión:** sin casilla de verificación, para no estorbar al cliente. Los protegen los límites de intentos de Supabase.
 - **Claves:** la clave `anon` de `js/config.js` es pública por diseño. La `service_role` y la clave de Gmail nunca deben ir en el código ni en GitHub.
 
 ## Fechas para recordar

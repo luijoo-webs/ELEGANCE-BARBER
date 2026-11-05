@@ -419,4 +419,55 @@ assert.equal((await as(null, `select appointment_link($1)`, [id16]))[0].appointm
 await fails(as(null, `select link_token from appointments limit 1`), "permission denied");
 ok("enlace: muestra la cita sin datos de contacto; código falso no sirve; el código no se entrega pasados 30 min");
 
+console.log("Migración 17 (inventario y facturas)");
+const m17 = readFileSync(new URL("../supabase/17_inventario_facturas.sql", import.meta.url), "utf8");
+await db.exec(m17); await db.exec(m17);
+const stockOf = async (n) => (await db.query(`select stock from products where name = $1`, [n])).rows[0].stock;
+const invOf = async (id) => (await db.query(`select * from invoices where appointment_id = $1 order by number`, [id])).rows;
+assert.equal((await db.query(`select count(*)::int c from products`)).rows[0].c, 27);
+assert.ok((await as(null, `select id from products`)).length === 27);
+assert.deepEqual(await as(U.beto, `update products set price = 1 where name = 'Soda' returning id`), []);
+await db.query(`update products set stock = 5 where name = 'Soda'`);
+await fails(db.query(`select _check_extras('[{"n":"Soda","q":1,"p":1}]')`), "PRODUCTO_NO_DISPONIBLE");
+await fails(db.query(`select _check_extras('[{"n":"Inventado","q":1,"p":3000}]')`), "PRODUCTO_NO_DISPONIBLE");
+await fails(db.query(`select _check_extras('[{"n":"Soda","q":6,"p":3000}]')`), "PRODUCTO_AGOTADO");
+ok("productos: visibles para todos, editables solo por admin; la reserva no acepta precio falso ni más de lo que hay");
+
+await db.query(`update appointments set extras = '[{"n":"Soda","q":2,"p":3000}]', price = 20000, services = null, payment_method = 'Efectivo', starts_at = now() - interval '3 hours', ends_at = now() - interval '2 hours' where id = $1`, [id16]);
+await as(U.admin, `select admin_set_status($1, 'completada', null)`, [id16]);
+assert.equal(await stockOf("Soda"), 3);
+let inv17 = await invOf(id16);
+assert.equal(inv17.length, 1); assert.equal(Number(inv17[0].total), 26000); assert.equal(inv17[0].items.length, 2);
+await fails(as(null, `select * from invoices`), "permission denied");
+await fails(as(U.ana, `select claim_invoices()`), "permission denied");
+assert.deepEqual(await as(U.beto, `select id from invoices`), []);
+await fails(as(U.admin, `update invoices set total = 1 where id = $1`, [inv17[0].id]), "permission denied");
+await as(U.admin, `select admin_set_status($1, 'confirmada', null)`, [id16]);
+assert.equal(await stockOf("Soda"), 5);
+inv17 = await invOf(id16); assert.ok(inv17[0].voided_at);
+assert.ok(!(await db.query(`select claim_invoices()`)).rows.length, "una anulada no se envía");
+await as(U.admin, `select admin_set_status($1, 'completada', null)`, [id16]);
+inv17 = await invOf(id16); assert.equal(inv17.length, 2); assert.ok(inv17[1].number > inv17[0].number);
+assert.equal((await db.query(`select claim_invoices()`)).rows.length, 1);
+assert.equal((await db.query(`select claim_invoices()`)).rows.length, 0);
+ok("cita: cobrar descuenta y factura; deshacer devuelve y anula; el correo sale una vez y nunca el de una anulada");
+
+const today17 = (await db.query(`select (now() at time zone 'America/Bogota')::date::text d`)).rows[0].d;
+const sale = (who, lines, email = null) => as(who, `select admin_sale($1::jsonb, 'Nequi', $2::date, 'Barbero', 'Cli', $3) r`, [JSON.stringify(lines), today17, email]);
+const [{ r: s17 }] = await sale(U.admin, [{ n: "Soda", q: 2, p: 3000, svc: false }, { n: "Corte", q: 1, p: 20000, svc: true }], "Cli@Correo.co");
+assert.equal(Number(s17.total), 26000); assert.equal(await stockOf("Soda"), 1);
+const f17 = (await db.query(`select description, category, amount from finance_entries where notes = 'Barbero · Cli' order by amount`)).rows;
+assert.deepEqual(f17.map((r) => [r.category, Number(r.amount)]), [["Venta de productos", 6000], ["Servicios", 20000]]);
+assert.equal((await db.query(`select client_email from invoices where id = $1`, [s17.id])).rows[0].client_email, "cli@correo.co");
+await fails(sale(U.ana, [{ n: "Soda", q: 1, p: 3000 }]), "NO_AUTORIZADO");
+await fails(sale(U.admin, []), "VENTA_INVALIDA");
+await fails(sale(U.admin, [{ n: "Soda", q: 1, p: 0 }]), "VENTA_INVALIDA");
+await fails(sale(U.admin, [{ n: "Soda", q: 1, p: 3000 }], "malo"), "CORREO_INVALIDO");
+await sale(U.admin, [{ n: "Soda", q: 50, p: 3000 }]);
+assert.equal(await stockOf("Soda"), 0);
+const [{ admin_stock: st17 }] = await as(U.admin, `select admin_stock((select id from products where name='Soda'), 4)`);
+assert.equal(st17, 4);
+await fails(as(U.ana, `select admin_stock((select id from products where name='Soda'), 4)`), "NO_AUTORIZADO");
+ok("caja: ingreso, inventario y factura juntos; solo admin; el inventario nunca baja de 0");
+
 console.log(`\n${passed} pruebas OK`);

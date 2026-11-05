@@ -1,4 +1,4 @@
-// Correos de la barbería: confirmación de la reserva y recordatorio 2 horas antes.
+// Correos de la barbería: confirmación de la reserva, recordatorio 2 horas antes y factura con agradecimiento al cobrar.
 // Edge Function de Supabase. La llaman la web al reservar y una tarea programada cada 5 minutos (08_programar_correos.sql).
 // Secretos (Edge Functions → Secrets): SMTP_USER = correo Gmail de la barbería, SMTP_PASS = contraseña de aplicación de Gmail.
 import { createClient } from "npm:@supabase/supabase-js@2.49.4";
@@ -33,16 +33,11 @@ const SVC_PHOTO: [RegExp, string][] = [
   [/secado|planchado/, REAL("clasico-linea")], [/cerquillo/, REAL("cerquillo")]
 ];
 const svcPhoto = (name: string, url?: string | null) => /^https:\/\//.test(url || "") ? url! : (SVC_PHOTO.find(([re]) => re.test(name.toLowerCase())) || [, REAL("low-fade")])[1];
-// shortcut: copia de la lista de productos de js/public.js (SHOP); si cambia allá, actualizar aquí.
-const SHOP_IMG: Record<string, string> = { "Detodito": "detodito", "Margaritas (pollo, limón, tomate…)": "margaritas", "Natuchip": "natuchip", "Boliquesos": "boliquesos",
-  "Doritos": "doritos", "Cheestris": "cheestre", "Choclitos": "choclitos", "Maní": "manis", "Chokis": "chockis", "Coronita": "coronita", "Club Colombia": "club-colombia",
-  "Stella Artois botella": "stella-botella", "Stella Artois lata": "stella-lata", "Costeña": "costena", "Miller Lite": "miller-lite", "Coca-Cola personal": "coca-cola",
-  "Coca-Cola Zero pequeña": "coca-zero", "Agua saborizada pequeña": "agua-saborizada", "Ginger personal": "ginger", "Sprite personal": "sprite",
-  "Quatro personal": "quatro-personal", "Kola Román pequeña": "kola-roman", "Jugo del Valle": "jugo-del-valle", "Agua personal": "agua",
-  "Quatro pequeña": "quatro-pequena", "Speed Max": "speed-max", "Soda": "soda" };
+// Foto pequeña del producto: la subida en el panel o la miniatura de la lista original.
+const shopMini = (u?: string | null) => /^https:\/\//.test(u || "") ? u! : u?.startsWith("assets/tienda/") ? SITE + u.replace("assets/tienda/", "assets/tienda/mini/").replace(/\?.*/, "") : `${SITE}assets/logo.jpg`;
 
 const GOLD = "#b8913a", INK = "#141312", MUTED = "#6b665f", LINE = "#ece8e1";
-function mail(kind: "confirmacion" | "recordatorio", l: Appt[], neg: Record<string, string>, photos: Map<string, string | null>) {
+function mail(kind: "confirmacion" | "recordatorio", l: Appt[], neg: Record<string, string>, photos: Map<string, string | null>, shop: Map<string, string | null>) {
   const a = l[0], last = l[l.length - 1], extras = a.extras ?? [];
   const sSum = l.reduce((t, x) => t + Number(x.price ?? 0), 0), xSum = extras.reduce((t, e) => t + e.q * e.p, 0);
   const priced = l.every((x) => x.price != null);
@@ -86,12 +81,12 @@ function mail(kind: "confirmacion" | "recordatorio", l: Appt[], neg: Record<stri
         <tr><td colspan="2" style="padding:0 18px 16px;font-size:13px;color:#cfc9bf">Barbero: <b style="color:#fff">${esc(a.barber_name)}</b>${neg.direccion ? ` · ${esc(neg.direccion)}` : ""}</td></tr></table>
       <table role="presentation" style="width:100%;border-collapse:collapse;margin-top:22px">
         ${lines.map((x) => item(esc(svcPhoto(x.n, photos.get(x.id))), esc(x.n), "Servicio", x.p != null ? money(Number(x.p)) : "Por confirmar")).join("")}
-        ${extras.map((e) => item(SHOP_IMG[e.n] ? `${SITE}assets/tienda/mini/${SHOP_IMG[e.n]}.jpg` : `${SITE}assets/logo.jpg`, esc(e.n), `Cantidad ${e.q} · ${money(e.p)} c/u`, money(e.q * e.p))).join("")}
+        ${extras.map((e) => item(esc(shopMini(shop.get(e.n))), esc(e.n), `Cantidad ${e.q} · ${money(e.p)} c/u`, money(e.q * e.p))).join("")}
       </table>
       <table role="presentation" style="width:100%;border-collapse:collapse;border-top:1px solid ${LINE};padding-top:8px">
         <tr><td colspan="2" style="height:8px"></td></tr>
         ${priced ? sum("Servicios", money(sSum)) : ""}
-        ${extras.length ? sum("Snacks y bebidas", money(xSum)) : ""}
+        ${extras.length ? sum("Productos", money(xSum)) : ""}
         ${sum("Pago", a.payment_method ? `${esc(a.payment_method)} · en la barbería` : "En la barbería")}
         ${priced ? sum("Total", money(sSum + xSum), true) : ""}
       </table>
@@ -109,6 +104,37 @@ function mail(kind: "confirmacion" | "recordatorio", l: Appt[], neg: Record<stri
   return { subject, html };
 }
 
+type Inv = { id: string; number: number; client_name: string | null; client_email: string; barber_name: string | null; items: { n: string; q: number; p: number }[]; total: number; method: string | null; issued_at: string };
+function invoiceMail(i: Inv, neg: Record<string, string>) {
+  const name = esc(neg.nombre || "The Elegance of the Barber"), no = String(i.number).padStart(5, "0");
+  const first = esc(String(i.client_name || "").trim().split(/\s+/)[0] || "");
+  const tel = String(neg.telefono || "").replace(/\D/g, "");
+  const wa = /^https:\/\//.test(neg.whatsapp_url || "") ? neg.whatsapp_url : tel ? `https://wa.me/${tel.length === 10 ? "57" + tel : tel}` : "";
+  const cell = (t: string, right = false) => `<td style="padding:12px 0;border-top:1px solid ${LINE};font-size:14px;vertical-align:top;${right ? "text-align:right;white-space:nowrap" : ""}">${t}</td>`;
+  const fact = (k: string, v: string) => `<td style="padding:0 12px 12px 0;vertical-align:top"><div style="color:${MUTED};font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase">${k}</div><div style="font-size:14px;margin-top:3px">${v}</div></td>`;
+  const html = `<div style="background:#f1eee8;padding:28px 12px;font-family:Arial,Helvetica,sans-serif;color:${INK}">
+  <div style="max-width:560px;margin:auto;background:#fff">
+    <div style="background:${INK};padding:26px;text-align:center;border-bottom:3px solid ${GOLD}"><img src="${SITE}assets/logo.jpg" alt="${name}" width="120" style="display:inline-block;border-radius:6px"></div>
+    <div style="padding:30px 30px 8px">
+      <div style="color:${GOLD};font-size:11px;font-weight:700;letter-spacing:.22em;text-transform:uppercase">Factura Nº ${no}</div>
+      <h1 style="margin:10px 0 14px;font-size:26px;line-height:1.15;text-transform:uppercase">¡Gracias por tu visita${first ? ", " + first : ""}!</h1>
+      <p style="margin:0 0 20px;line-height:1.6;font-size:15px">Fue un gusto atenderte en <b>${name}</b>. Aquí tienes el detalle de tu pago. ¡Te esperamos pronto!</p>
+      <table role="presentation" style="width:100%;border-collapse:collapse"><tr>${fact("Fecha", esc(fecha(i.issued_at)))}${i.method ? fact("Pago", esc(i.method)) : ""}${i.barber_name ? fact("Atendió", esc(i.barber_name)) : ""}</tr></table>
+      <table role="presentation" style="width:100%;border-collapse:collapse;margin-top:6px">
+        ${i.items.map((l) => `<tr>${cell(`<b>${esc(l.n)}</b><div style="color:${MUTED};font-size:13px;margin-top:3px">${l.q} × ${money(Number(l.p))}</div>`)}${cell(money(l.q * Number(l.p)), true)}</tr>`).join("")}
+        <tr><td style="padding:14px 0 0;border-top:2px solid ${INK};font-weight:700;font-size:17px">Total pagado</td><td style="padding:14px 0 0;border-top:2px solid ${INK};font-weight:700;font-size:17px;text-align:right;white-space:nowrap">${money(Number(i.total))}</td></tr>
+      </table>
+      <table role="presentation" style="width:100%;border-collapse:collapse;margin:26px 0 6px"><tr><td><a href="${SITE}#/reservar" style="display:block;background:${INK};color:#fff;text-decoration:none;padding:14px 10px;text-align:center;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase">Reservar mi próxima cita</a></td></tr></table>
+      <p style="font-size:12px;color:${MUTED};line-height:1.6;margin:16px 0 0">Documento de venta de la barbería. No reemplaza la factura electrónica de la DIAN.</p>
+    </div>
+    <div style="padding:22px 30px;margin-top:22px;background:#f7f5f1;text-align:center;font-size:12px;color:${MUTED};line-height:1.7">
+      <b style="color:${INK};letter-spacing:.12em;text-transform:uppercase">${name}</b><br>
+      ${neg.direccion ? `${esc(neg.direccion)}<br>` : ""}<a href="${SITE}" style="color:${GOLD}">Visita nuestra web</a>${wa ? ` · <a href="${esc(wa)}" style="color:${GOLD}">WhatsApp</a>` : ""}
+    </div>
+  </div></div>`;
+  return { subject: `Gracias por tu visita · Factura Nº ${no}`, html };
+}
+
 Deno.serve(async () => {
   const user = Deno.env.get("SMTP_USER"), pass = Deno.env.get("SMTP_PASS");
   // Sin credenciales no se reclama nada: así ninguna cita queda marcada como avisada sin correo.
@@ -120,12 +146,14 @@ Deno.serve(async () => {
   try { await smtp.verify(); } catch (e) { console.error("gmail", e); return Response.json({ error: `Gmail rechazó el acceso: ${(e as Error).message}` }, { status: 502 }); }
   const { data: sv } = await db.from("services").select("id, image_url");
   const photos = new Map((sv ?? []).map((x) => [x.id as string, x.image_url as string | null]));
+  const { data: pr } = await db.from("products").select("name, image_url");
+  const shop = new Map((pr ?? []).map((x) => [x.name as string, x.image_url as string | null]));
   let sent = 0, failed = 0;
   for (const [kind, rpc, col] of [["confirmacion", "claim_confirmations", "confirm_sent_at"], ["recordatorio", "claim_reminders", "reminder_sent_at"]] as const) {
     const { data, error } = await db.rpc(rpc);
     if (error) { console.error(rpc, error); continue; }
     for (const l of visits(data as Appt[])) {
-      const { subject, html } = mail(kind, l, neg, photos);
+      const { subject, html } = mail(kind, l, neg, photos, shop);
       try {
         await smtp.sendMail({ from: `${neg.nombre || "The Elegance of the Barber"} <${user}>`, to: l[0].client_email, subject, html });
         sent++;
@@ -133,6 +161,18 @@ Deno.serve(async () => {
         failed++; console.error("envío", e);
         await db.from("appointments").update({ [col]: null }).in("id", l.map((x) => x.id));   // se reintenta en la próxima pasada
       }
+    }
+  }
+  const { data: invs, error: invErr } = await db.rpc("claim_invoices");
+  if (invErr) console.error("claim_invoices", invErr);
+  for (const i of (invs ?? []) as Inv[]) {
+    const { subject, html } = invoiceMail(i, neg);
+    try {
+      await smtp.sendMail({ from: `${neg.nombre || "The Elegance of the Barber"} <${user}>`, to: i.client_email, subject, html });
+      sent++;
+    } catch (e) {
+      failed++; console.error("envío factura", e);
+      await db.from("invoices").update({ email_sent_at: null }).eq("id", i.id);   // se reintenta en la próxima pasada
     }
   }
   smtp.close();

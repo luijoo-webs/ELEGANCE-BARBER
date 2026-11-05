@@ -1119,3 +1119,82 @@ body.is-admin .ticket2 input { min-height: 34px; padding: 5px 9px; background: r
 .alink__list li { display: flex; gap: .8rem; align-items: center; }
 .alink__list img { width: 76px; height: 76px; object-fit: cover; border-radius: 6px; flex: none; }
 .alink__list b, .alink__list span { display: block; }
+
+/* Foto subida desde el panel: se ve completa (las de la lista original traen su recorte). */
+.pk--free img { position: static; width: 100%; height: 100%; margin: 0; object-fit: contain; }
+
+/* Resumen: el día de un vistazo */
+.today { background: var(--ink); color: #f5f2ed; padding: clamp(18px, 3vw, 28px); margin-bottom: 18px; border-top: 3px solid var(--brand); }
+.today__top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 14px; margin-bottom: 20px; }
+.today__top span { font: 700 .66rem var(--sans); letter-spacing: .18em; text-transform: uppercase; color: #c9c3b8; }
+.today__top h2 { margin: 6px 0 0; color: #fff; font: 900 clamp(1.5rem, 3vw, 2.2rem)/1 var(--sans); text-transform: uppercase; letter-spacing: -.01em; }
+.today__acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.today__acts .btn--ghost { color: #f5f2ed; border-color: #5a5650; background: transparent; }
+.today__nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1px; background: #33302c; }
+.today__nums > * { background: var(--ink); padding: 14px 16px; color: inherit; text-decoration: none; }
+.today__nums b { display: block; color: #fff; font: 800 clamp(1.35rem, 2.4vw, 1.9rem)/1.1 var(--sans); }
+.today__nums small { color: #c9c3b8; font-size: .76rem; }
+.lowlist { list-style: none; margin: 0 0 12px; padding: 0; }
+.lowlist li { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: .88rem; }
+
+/* Inventario */
+.pill { display: inline-block; padding: 3px 8px; font: 700 .62rem var(--sans); letter-spacing: .08em; text-transform: uppercase; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.pill--ok { background: #e4f1e8; color: #1e6a3a; }
+.pill--low { background: #fbeed3; color: #80570a; }
+.pill--no { background: #f8e0dd; color: #a12a1f; }
+.prods { display: grid; gap: 8px; }
+.prod { display: grid; grid-template-columns: 56px minmax(150px, 1fr) auto auto; gap: 14px; align-items: center; background: var(--surface); border: 1px solid var(--line); padding: 10px 14px; }
+.prod.is-off { opacity: .6; }
+.prod > img { width: 56px; height: 56px; object-fit: contain; background: #fff; }
+.prod__info { min-width: 0; display: grid; gap: 1px; }
+.prod__info small { color: var(--muted); font-size: .72rem; }
+.prod__info span { font-size: .85rem; color: var(--muted); }
+.prod__stock { display: flex; align-items: center; gap: 10px; }
+.prod__stock [data-pill] { min-width: 88px; text-align: right; }
+.prod__stock input { width: 54px; min-width: 0; text-align: center; padding: 6px 2px; -moz-appearance: textfield; appearance: textfield; }
+.prod__stock input::-webkit-inner-spin-button { display: none; }
+.prod__acts { display: flex; gap: 4px; }
+@media (max-width: 860px) {
+  .prod { grid-template-columns: 56px minmax(0, 1fr); }
+  .prod__stock, .prod__acts { grid-column: 1 / -1; justify-content: space-between; flex-wrap: wrap; }
+  .prod__stock [data-pill] { min-width: 0; }
+}
+
+/* Factura */
+.invlist tbody tr { cursor: pointer; }
+.invlist tbody tr:hover { background: var(--surface-2); }
+.invlist small { color: var(--muted); }
+.ticket2__mail { display: grid; gap: 4px; margin-bottom: 12px; }
+.ticket2__mail span { font-size: .78rem; color: var(--muted); }
+.invdoc { color: #141312; }
+.invdoc header { display: flex; align-items: center; gap: 14px; padding: 0 34px 16px 0; border-bottom: 3px solid #141312; }
+.invdoc header img { width: 58px; height: 58px; object-fit: cover; }
+.invdoc header div { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.invdoc header b { text-transform: uppercase; letter-spacing: .03em; }
+.invdoc header small { color: #6b665f; }
+.invdoc header p { margin: 0; text-align: right; }
+.invdoc header p span { display: block; font: 700 .62rem var(--sans); letter-spacing: .18em; text-transform: uppercase; color: #8d6f2c; }
+.invdoc header strong { font-size: 1.15rem; white-space: nowrap; }
+.invdoc__void { margin: 12px 0 0; padding: 8px 12px; background: #f8e0dd; color: #a12a1f; font-weight: 700; }
+.invdoc dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 16px 0; }
+.invdoc dt { font: 700 .62rem var(--sans); letter-spacing: .14em; text-transform: uppercase; color: #6b665f; }
+.invdoc dd { margin: 2px 0 0; }
+.invdoc table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.invdoc th { text-align: left; font: 700 .62rem var(--sans); letter-spacing: .1em; text-transform: uppercase; color: #6b665f; padding: 8px 6px; border-bottom: 1px solid #141312; }
+.invdoc td { padding: 9px 6px; border-bottom: 1px solid #ece8e1; }
+.invdoc th:nth-child(n+2), .invdoc td:nth-child(n+2) { text-align: right; white-space: nowrap; }
+.invdoc tfoot td { font-weight: 800; font-size: 1.05rem; border-bottom: 0; border-top: 2px solid #141312; }
+.invdoc tfoot td:first-child { text-align: left; }
+.invdoc__thanks { margin: 18px 0 4px; font-weight: 700; text-align: center; }
+.invdoc__legal { display: block; text-align: center; color: #6b665f; font-size: .72rem; }
+.invdoc__acts { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); display: grid; gap: 12px; }
+.invdoc__mail { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.invdoc__mail .field { flex: 1; min-width: 200px; margin: 0; }
+@media print {
+  body > *:not(.modal) { display: none !important; }
+  .modal { position: static; background: none; padding: 0; display: block; overflow: visible; }
+  .modal__box { box-shadow: none; max-width: none; width: 100%; border: 0; max-height: none; overflow: visible; }
+  .modal__x, .no-print { display: none !important; }
+}
+.toolbar .chip { text-decoration: none; }
+@media print { .invdoc header { padding-right: 0; } }

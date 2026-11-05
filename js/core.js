@@ -1,6 +1,6 @@
 /* Núcleo compartido: conexión, estado, utilidades de fecha (America/Bogota), errores y UI básica. */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, TURNSTILE_SITE_KEY } from "./config.js?v=20261104d";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, TURNSTILE_SITE_KEY } from "./config.js?v=20261105a";
 
 export const CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 export const sb = CONFIGURED
@@ -11,20 +11,38 @@ export const SITE_URL = location.origin + location.pathname.replace(/index\.html
 /* ---------- Turnstile (casilla anti-robots) ---------- */
 export const captchaSlot = () => TURNSTILE_SITE_KEY ? `<div class="captcha" data-captcha></div>` : "";
 if (TURNSTILE_SITE_KEY) {
-  const s = document.createElement("script");
-  s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-  const paint = () => window.turnstile && document.querySelectorAll("[data-captcha]:not([data-id])").forEach((el) => { el.dataset.id = window.turnstile.render(el, { sitekey: TURNSTILE_SITE_KEY, language: "es" }); });
-  s.onload = paint; document.head.append(s);
+  let requested = false;
+  // Solo se muestra si Cloudflare necesita preguntar algo; el resto del tiempo es invisible.
+  const paint = () => {
+    const slots = document.querySelectorAll("[data-captcha]:not([data-id])");
+    if (!slots.length) return;
+    if (!window.turnstile) {
+      if (requested) return;
+      requested = true;   // el script se pide solo cuando hay un formulario que lo usa
+      const s = document.createElement("script");
+      s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+      s.onload = paint; document.head.append(s);
+      return;
+    }
+    slots.forEach((el) => { el.dataset.id = window.turnstile.render(el, { sitekey: TURNSTILE_SITE_KEY, language: "es", appearance: "interaction-only", retry: "auto", "refresh-expired": "auto" }); });
+  };
   new MutationObserver(paint).observe(document.documentElement, { childList: true, subtree: true });   // los formularios se dibujan después
 }
 const captchaEl = (form) => form?.querySelector("[data-captcha][data-id]");
-export const captchaToken = (form) => { const el = captchaEl(form); return el ? window.turnstile.getResponse(el.dataset.id) : undefined; };
-export const captchaReset = (form) => { const el = captchaEl(form); if (el) window.turnstile.reset(el.dataset.id); };   // cada token sirve una sola vez
+const captchaToken = async (form) => {
+  // La verificación invisible puede tardar unos segundos: se espera en vez de fallar.
+  for (let i = 0; i < 40; i++) {
+    const el = captchaEl(form), t = el && window.turnstile?.getResponse(el.dataset.id);
+    if (t) return t;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+};
+const captchaReset = (form) => { const el = captchaEl(form); if (el) window.turnstile.reset(el.dataset.id); };   // cada token sirve una sola vez
 
 /* Reserva sin cuenta: con Turnstile va por la función del servidor. */
 export async function bookGuest(form, args) {
   if (!TURNSTILE_SITE_KEY) return sb.rpc("book_cart_guest", args);
-  const { data, error } = await sb.functions.invoke("reservar", { body: { token: captchaToken(form), args } });
+  const { data, error } = await sb.functions.invoke("reservar", { body: { token: await captchaToken(form), args } });
   captchaReset(form);
   if (!error) return { data };
   const body = await error.context?.json?.().catch(() => null);
@@ -35,36 +53,50 @@ export async function bookGuest(form, args) {
 export const State = {
   user: null, profile: null,
   settings: { negocio: {}, reservas: {} },
-  categories: [], services: [], barbers: [], schedules: [], gallery: [],
+  categories: [], services: [], barbers: [], schedules: [], gallery: [], products: [],
   loaded: false, error: null
 };
 
+/* Tienda pública: lo publicado y con existencias. El panel usa State.products, que además trae lo oculto y lo agotado. */
+export const SHOP = {}, SHOP_ITEMS = [], SHOP_LIST = [];
+export const prodPic = (u) => u || "assets/logo.jpg";
+export const prodMini = (u) => u?.startsWith("assets/tienda/") ? u.replace("assets/tienda/", "assets/tienda/mini/").replace(/\?.*/, "") : prodPic(u);
+function fillShop(rows) {
+  Object.keys(SHOP).forEach((k) => delete SHOP[k]); SHOP_ITEMS.length = SHOP_LIST.length = 0;
+  for (const r of rows) {
+    if (!r.active || r.stock === 0) continue;
+    const item = [r.name, Number(r.price), r.slug, prodPic(r.image_url), prodMini(r.image_url)];
+    (SHOP[r.category] ||= []).push(item); SHOP_ITEMS.push(item);
+    SHOP_LIST.push({ n: r.name, p: Number(r.price), img: r.slug, c: r.category, pic: item[3], mini: item[4], d: r.description });
+  }
+}
+
 export async function loadPublic() {
-  const [st, cat, svc, bar, sch, gal] = await Promise.all([
+  const [st, cat, svc, bar, sch, gal, pro] = await Promise.all([
     sb.from("settings").select("key,value"),
     sb.from("service_categories").select("*").order("sort_order").order("name"),
     sb.from("services").select("*").is("deleted_at", null).order("sort_order").order("name"),
     sb.from("barbers").select("*").is("deleted_at", null).order("sort_order").order("name"),
     sb.from("schedules").select("*").order("weekday").order("start_time"),
-    sb.from("gallery").select("*").order("sort_order")
+    sb.from("gallery").select("*").order("sort_order"),
+    sb.from("products").select("*").is("deleted_at", null).order("sort_order").order("name")
   ]);
-  const err = [st, cat, svc, bar, sch, gal].find((r) => r.error)?.error;
+  const err = [st, cat, svc, bar, sch, gal, pro].find((r) => r.error)?.error;
   if (err) throw err;
   State.settings = { negocio: {}, reservas: {}, ...Object.fromEntries(st.data.map((r) => [r.key, r.value])) };
   State.categories = cat.data; State.services = svc.data; State.barbers = bar.data;
-  State.schedules = sch.data; State.gallery = gal.data;
+  State.schedules = sch.data; State.gallery = gal.data; State.products = pro.data;
+  fillShop(pro.data);
   State.loaded = true;
   applyBrand();
 }
 
 export async function loadProfile() {
   const { data: { session } } = await sb.auth.getSession();
-  State.user = session?.user || null;
-  State.profile = null;
-  if (State.user) {
-    const { data } = await sb.from("profiles").select("*").eq("id", State.user.id).maybeSingle();
-    State.profile = data;
-  }
+  const user = session?.user || null;
+  // Se asigna al final: mientras llega, otra vista no debe ver al admin como si no tuviera permisos.
+  const profile = user ? (await sb.from("profiles").select("*").eq("id", user.id).maybeSingle()).data : null;
+  State.user = user; State.profile = profile;
 }
 export const isAdmin = () => State.profile?.role === "admin";
 
@@ -122,6 +154,9 @@ const ERRORS = {
   NO_AUTORIZADO: "No tienes permisos para esta acción.",
   SOLO_CANCELADAS: "Solo se pueden eliminar citas canceladas, completadas o de quien no vino.",
   CITA_NO_ENCONTRADA: "La cita ya no existe.",
+  PRODUCTO_NO_DISPONIBLE: "Un producto de tu carrito cambió o ya no está disponible. Actualiza la página y revísalo.",
+  PRODUCTO_AGOTADO: "No quedan suficientes unidades de un producto de tu carrito. Quita alguna e inténtalo otra vez.",
+  VENTA_INVALIDA: "Revisa los productos, las cantidades y la fecha de la venta.",
   SERVICIO_NO_DISPONIBLE: "Ese servicio ya no está disponible.",
   ANTICIPACION_MINIMA: "Esa hora ya no cumple la anticipación mínima para reservar. Elige otra.",
   FUERA_DE_RANGO: "Esa fecha está fuera del periodo en el que se aceptan reservas.",

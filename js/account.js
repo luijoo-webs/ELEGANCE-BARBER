@@ -1,9 +1,9 @@
 /* Cuentas de cliente: registro, sesión, recuperación, perfil y mis citas. */
 import {
   sb, State, SITE_URL, $, esc, friendly, toast, loader, emptyState, busy, setMsg, formData, confirmDialog, modal,
-  fmtDate, fmtTime, durLabel, priceLabel, statusBadge, ymd, loadProfile, waLink, consentChecks, consentMissing, logConsent, isAdmin, captchaSlot, captchaToken, captchaReset
-} from "./core.js?v=20261104d";
-import { mountSlotPicker } from "./public.js?v=20261104d";
+  fmtDate, fmtTime, durLabel, priceLabel, statusBadge, ymd, loadProfile, waLink, consentChecks, consentMissing, logConsent, isAdmin
+} from "./core.js?v=20261105a";
+import { mountSlotPicker } from "./public.js?v=20261105a";
 
 const back = (q) => (q.volver === "reservar" ? "#/reservar" : q.volver === "admin" || isAdmin() ? "#/admin" : "#/cuenta");   // el admin entra directo al panel
 const R = () => State.settings.reservas || {};
@@ -40,7 +40,6 @@ function viewLogin(q) {
     <form class="form" id="loginForm" novalidate>
       <label class="field"><span>Correo electrónico</span><input type="email" name="email" required autocomplete="email"></label>
       ${pw("password", "Contraseña", "current-password")}
-      ${captchaSlot()}
       <button class="btn btn--block" type="submit" data-busy="Entrando…">Entrar</button>
       <p class="form-msg" id="authMsg" role="alert"></p>
     </form>
@@ -55,7 +54,6 @@ function viewRegister(q) {
       <label class="field"><span>Celular / WhatsApp</span><input type="tel" name="phone" required minlength="7" maxlength="30" autocomplete="tel" inputmode="tel"></label>
       ${pw("password", "Contraseña (mín. 8, con letras y números)", "new-password")}
       ${consentChecks()}
-      ${captchaSlot()}
       <button class="btn btn--block" type="submit" data-busy="Creando cuenta…">Crear cuenta</button>
       <p class="form-msg" id="authMsg" role="alert"></p>
     </form>
@@ -64,7 +62,6 @@ function viewRegister(q) {
 const viewRecover = () => authShell("Recuperar contraseña", "Te enviaremos un enlace para crear una contraseña nueva.", `
   <form class="form" id="recoverForm" novalidate>
     <label class="field"><span>Correo electrónico</span><input type="email" name="email" required autocomplete="email"></label>
-    ${captchaSlot()}
     <button class="btn btn--block" type="submit" data-busy="Enviando…">Enviar enlace</button>
     <p class="form-msg" id="authMsg" role="alert"></p>
   </form><p class="auth__alt"><a href="#/cuenta">Volver a iniciar sesión</a></p>`);
@@ -86,8 +83,7 @@ function mountAuth(q) {
     e.preventDefault(); const f = formData(e.target);
     if (!validEmail(f.email) || !f.password) return msg("Escribe tu correo y contraseña.");
     busy(e.submitter, async () => {
-      const { error } = await sb.auth.signInWithPassword({ email: f.email.trim(), password: f.password, options: { captchaToken: captchaToken(e.target) } });
-      captchaReset(e.target);
+      const { error } = await sb.auth.signInWithPassword({ email: f.email.trim(), password: f.password });
       if (error) return msg(friendly(error));
       await loadProfile(); location.hash = back(q);
     });
@@ -103,8 +99,7 @@ function mountAuth(q) {
       try { await logConsent("registro", f.email.trim(), f.full_name.trim()); } catch (ce) { return msg(friendly(ce)); }
       // El rol NO se envía: el servidor siempre crea cuentas de cliente.
       const { data, error } = await sb.auth.signUp({ email: f.email.trim(), password: f.password,
-        options: { emailRedirectTo: SITE_URL, captchaToken: captchaToken(e.target), data: { full_name: f.full_name.trim(), phone: f.phone.trim() } } });
-      captchaReset(e.target);
+        options: { emailRedirectTo: SITE_URL, data: { full_name: f.full_name.trim(), phone: f.phone.trim() } } });
       if (error) return msg(friendly(error));
       if (data.session) { await loadProfile(); location.hash = back(q); return; }
       e.target.outerHTML = `<div class="notice"><strong>Revisa tu correo.</strong> Te enviamos un enlace para confirmar tu cuenta a <b>${esc(f.email)}</b>. Después inicia sesión${q.volver === "reservar" ? " y confirma tu reserva: la selección sigue guardada" : ""}.</div>`;
@@ -114,8 +109,7 @@ function mountAuth(q) {
     e.preventDefault(); const f = formData(e.target);
     if (!validEmail(f.email)) return msg("Escribe un correo válido.");
     busy(e.submitter, async () => {
-      const { error } = await sb.auth.resetPasswordForEmail(f.email.trim(), { redirectTo: SITE_URL, captchaToken: captchaToken(e.target) });
-      captchaReset(e.target);
+      const { error } = await sb.auth.resetPasswordForEmail(f.email.trim(), { redirectTo: SITE_URL });
       // Mismo mensaje exista o no la cuenta (no revelamos qué correos están registrados).
       if (error && /rate|seconds/i.test(error.message)) return msg(friendly(error));
       msg("Si el correo tiene una cuenta, te llegará un enlace en unos minutos. Revisa también spam.", true);
