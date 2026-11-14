@@ -470,4 +470,54 @@ assert.equal(st17, 4);
 await fails(as(U.ana, `select admin_stock((select id from products where name='Soda'), 4)`), "NO_AUTORIZADO");
 ok("caja: ingreso, inventario y factura juntos; solo admin; el inventario nunca baja de 0");
 
+console.log("Turnos: lo que se muestra es exactamente lo que se puede reservar");
+{
+  const [{ id: sx }] = (await db.query(`insert into services(name, duration_min) values ('Prueba 35', 35) returning id`)).rows;
+  const [{ id: tito }] = (await db.query(`insert into barbers(name, sort_order) values ('Tito prueba', 0) returning id`)).rows;
+  await db.query(`insert into barbers(name, sort_order) values ('Alvaro prueba', 0)`);
+  await db.query(`update settings set value = value || '{"intervalo_min": 35, "max_reservas_activas": 3}' where key = 'reservas'`);
+  const [{ dx, dow }] = (await db.query(`select ((now() at time zone 'America/Bogota')::date + 13)::text dx, extract(dow from (now() at time zone 'America/Bogota')::date + 13)::int dow`)).rows;
+  const barbers = (await db.query(`select id from barbers where active and deleted_at is null`)).rows.map((r) => r.id);
+  const [win] = (await db.query(`select start_time::text a, end_time::text b from schedules where barber_id is null and weekday = $1`, [dow])).rows;
+  assert.ok(win, "el día de prueba debe tener horario");
+  const toMin = (t) => +t.slice(0, 2) * 60 + +t.slice(3, 5);
+  const grid = [];   // todas las horas posibles del día según el intervalo
+  for (let m = toMin(win.a); m + 35 <= toMin(win.b); m += 35) grid.push(`${dx}T${String(m / 60 | 0).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}:00-05:00`);
+  const ms = (t) => new Date(t).getTime();
+  const avail = (bid) => as(null, `select barber_id, slot_start from get_availability($1, $2, $3::date, 1)`, [sx, bid, dx]);
+  let n = 0;
+  const book = (bid, t) => db.query(`select book_cart_guest('Cliente Prueba', $1, $2, $3::uuid[], $4, $5) r`, [`300${String(++n).padStart(7, "0")}`, `c${n}@prueba.co`, [sx], bid, t]);
+  const tryBook = async (bid, t) => { await db.exec("begin"); try { await book(bid, t); return true; } catch { return false; } finally { await db.exec("rollback"); } };
+  // La agenda de Tito como la del sábado: casi llena, con huecos.
+  for (const [i, t] of grid.entries()) if (i % 5 !== 3) await book(tito, t);
+  const check = async (label) => {
+    const any = await avail(null);
+    for (const r of any) assert.ok(await tryBook(null, r.slot_start), `${label}: ${r.slot_start} aparece pero no deja reservar`);
+    const union = new Set();
+    for (const bid of barbers) {
+      const mine = new Set((await avail(bid)).map((r) => ms(r.slot_start)));
+      mine.forEach((x) => union.add(x));
+      for (const t of grid) assert.equal(await tryBook(bid, t), mine.has(ms(t)), `${label}: barbero ${bid} a las ${t}`);
+    }
+    assert.deepEqual([...new Set(any.map((r) => ms(r.slot_start)))].sort(), [...union].sort(), `${label}: cualquier barbero = unión de barberos`);
+  };
+  await check("agenda mixta");
+  assert.deepEqual((await avail(tito)).map((r) => ms(r.slot_start)), grid.filter((_, i) => i % 5 === 3).map(ms), "a Tito solo le salen sus huecos");
+  // Se llena el día con "cualquier barbero": cada turno mostrado se reserva hasta que no queda ninguno.
+  let left = await avail(null), rounds = 0;
+  while (left.length) { await book(null, left[0].slot_start); left = await avail(null); assert.ok(++rounds < 500); }
+  for (const t of grid) assert.equal(await tryBook(null, t), false, `lleno: ${t} todavía deja reservar`);
+  await check("día lleno");
+  // Cancelar libera el turno y vuelve a salir.
+  const [{ id: one, starts_at }] = (await db.query(`select id, starts_at from appointments where barber_id = $1 and starts_at >= $2::timestamptz order by starts_at limit 1`, [tito, grid[0]])).rows;
+  await db.query(`update appointments set status = 'cancelada' where id = $1`, [one]);
+  assert.ok((await avail(tito)).some((r) => ms(r.slot_start) === ms(starts_at)));
+  await check("tras cancelar");
+  // Lo que no cumple la anticipación mínima no sale ni se deja reservar.
+  const [{ m: soon }] = await as(null, `select min(slot_start) m from get_availability($1, null, (now() at time zone 'America/Bogota')::date, 1)`, [sx]);
+  if (soon) assert.ok(ms(soon) >= Date.now() + 59 * 60000);
+  await fails(book(null, new Date(Date.now() + 10 * 60000).toISOString()), "ANTICIPACION_MINIMA");
+  ok(`${grid.length} horas × ${barbers.length} barberos: todo turno mostrado se reserva y ningún turno ocupado aparece`);
+}
+
 console.log(`\n${passed} pruebas OK`);

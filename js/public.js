@@ -3,7 +3,7 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday,
   fmtDay, fmtTime, fmtDate, hhmm, ymd, friendly, toast, loader, emptyState, busy, scheduleByDay, barberWorkDays, waLink, setMsg,
   mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal, modal, minutes, captchaSlot, bookGuest, statusBadge, SITE_URL, SHOP, SHOP_LIST, SHOP_ITEMS
-} from "./core.js?v=20261105b";
+} from "./core.js?v=20261114a";
 
 const N = () => State.settings.negocio || {};
 const R = () => State.settings.reservas || {};
@@ -467,11 +467,12 @@ export function mountSlotPicker(el, { serviceId, barberId = null, date = null, s
   const today = todayYmd();
   const st = { week: mondayOf(date || today), day: date || null, slots: [], loading: true, error: null, seq: 0 };
 
-  async function load() {
+  // quiet = recarga de fondo: sin "Buscando horarios…" y sin borrar lo que se ve si falla la red.
+  async function load(quiet = false) {
     const seq = ++st.seq;
-    st.loading = true; st.error = null; render();
+    if (!quiet) { st.loading = true; st.error = null; render(); }
     const { data, error } = await sb.rpc("get_availability", { p_service: serviceId, p_barber: barberId, p_from: st.week, p_days: 7 });
-    if (seq !== st.seq) return;
+    if (seq !== st.seq || (quiet && error)) return;
     st.loading = false;
     if (error) { st.error = friendly(error); st.slots = []; }
     else st.slots = data;
@@ -483,8 +484,9 @@ export function mountSlotPicker(el, { serviceId, barberId = null, date = null, s
   }
   // Para "cualquier barbero" se muestra cada hora una sola vez (el servidor asigna barbero).
   function byDay() {
-    const out = {};
+    const out = {}, cut = Date.now() + Number(R().anticipacion_min_minutos ?? 60) * 60000;   // lo que venció mientras la página estaba abierta
     for (const s of st.slots) {
+      if (new Date(s.slot_start).getTime() < cut) continue;
       const d = ymd(new Date(s.slot_start));
       (out[d] ||= []);
       if (!out[d].some((x) => x.slot_start === s.slot_start)) out[d].push(s);
@@ -535,6 +537,11 @@ export function mountSlotPicker(el, { serviceId, barberId = null, date = null, s
     if (slot) { selected = slot.dataset.slot; render(); onPick({ start: slot.dataset.slot, barberId: barberId ? slot.dataset.slotBarber : null, slotBarber: slot.dataset.slotBarber }); }
   });
   load();
+  // Los turnos cambian mientras el cliente mira: se recargan cada minuto y al volver a la pestaña.
+  const live = () => { if (!document.contains(el)) { clearInterval(timer); document.removeEventListener("visibilitychange", onShow); return false; } return !document.hidden; };
+  const onShow = () => { if (live()) load(true); };
+  const timer = setInterval(onShow, 60000);
+  document.addEventListener("visibilitychange", onShow);
   return { reload: load };
 }
 
@@ -742,6 +749,8 @@ export function mountBooking() {
   });
   function failed(error) {
     setMsg($("#confirmMsg"), friendly(error));
+    // Si la verificación de Cloudflare no pasa en este celular, que el cliente no quede sin cita.
+    if (/VERIFICACION|Failed to fetch|FunctionsFetchError/.test(error.message) && waLink()) $("#confirmMsg").insertAdjacentHTML("beforeend", ` <a href="${esc(waLink())}" target="_blank" rel="noopener">Reservar por WhatsApp</a>`);
     if (/HORARIO_OCUPADO|ANTICIPACION|BLOQUEADO|FUERA_DE_HORARIO/.test(error.message)) { Booking.set({ start: null }); toast(friendly(error), "err"); go(null); }
   }
   render();

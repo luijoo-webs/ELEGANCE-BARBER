@@ -1,6 +1,6 @@
 /* Núcleo compartido: conexión, estado, utilidades de fecha (America/Bogota), errores y UI básica. */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, TURNSTILE_SITE_KEY, GA_ID } from "./config.js?v=20261105b";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, TURNSTILE_SITE_KEY, GA_ID } from "./config.js?v=20261114a";
 
 export const CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 export const sb = CONFIGURED
@@ -42,11 +42,16 @@ const captchaReset = (form) => { const el = captchaEl(form); if (el) window.turn
 /* Reserva sin cuenta: con Turnstile va por la función del servidor. */
 export async function bookGuest(form, args) {
   if (!TURNSTILE_SITE_KEY) return sb.rpc("book_cart_guest", args);
-  const { data, error } = await sb.functions.invoke("reservar", { body: { token: await captchaToken(form), args } });
-  captchaReset(form);
-  if (!error) return { data };
-  const body = await error.context?.json?.().catch(() => null);
-  return { error: { message: body?.error || error.message } };
+  let last;
+  for (let i = 0; i < 2; i++) {   // un token vencido o rechazado se pide otra vez, una sola vez, sin molestar al cliente
+    const { data, error } = await sb.functions.invoke("reservar", { body: { token: await captchaToken(form), args } });
+    captchaReset(form);
+    if (!error) return { data };
+    const body = await error.context?.json?.().catch(() => null);
+    last = { message: body?.error || error.message };
+    if (last.message !== "VERIFICACION_FALLIDA") break;
+  }
+  return { error: last };
 }
 
 /* ---------- Estado global ---------- */
