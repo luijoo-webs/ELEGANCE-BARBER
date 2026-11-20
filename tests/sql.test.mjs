@@ -520,4 +520,29 @@ console.log("Turnos: lo que se muestra es exactamente lo que se puede reservar")
   ok(`${grid.length} horas × ${barbers.length} barberos: todo turno mostrado se reserva y ningún turno ocupado aparece`);
 }
 
+console.log("Migración 18 (cuenta de barbero y su WhatsApp)");
+{
+  const m18 = readFileSync(new URL("../supabase/18_whatsapp_barbero.sql", import.meta.url), "utf8");
+  await db.exec(m18); await db.exec(m18);
+  const W = "00000000-0000-0000-0000-0000000000c1";
+  await db.query(`insert into auth.users values ($1,'trabajador@x.co','{"full_name":"Trabajador","role":"admin"}')`, [W]);
+  const [{ id: mine }] = (await db.query(`select id from barbers where active and deleted_at is null order by name limit 1`)).rows;
+  assert.equal((await db.query(`select role from profiles where id = $1`, [W])).rows[0].role, "client");
+  await as(U.admin, `update profiles set role = 'barber', barber_id = $2 where id = $1`, [W, mine]);
+  await as(U.admin, `update barbers set whatsapp = '573014456110' where id = $1`, [mine]);
+  await fails(as(U.admin, `update barbers set whatsapp = '301 445' where id = $1`, [mine]), "barbers_whatsapp_check");
+  assert.equal((await as(null, `select whatsapp from barbers where id = $1`, [mine]))[0].whatsapp, "573014456110");
+  const seen = await as(W, `select barber_id from appointments`);
+  assert.ok(seen.length > 0 && seen.every((r) => r.barber_id === mine), "el barbero solo ve sus citas");
+  for (const t of ["finance_entries", "invoices", "audit_log", "client_admin_notes"]) assert.equal((await as(W, `select count(*)::int n from ${t}`))[0].n, 0, `no ve ${t}`);
+  assert.equal((await as(W, `select count(*)::int n from profiles`))[0].n, 1, "solo ve su perfil");
+  await as(W, `update profiles set role = 'admin', barber_id = null where id = $1`, [W]);
+  assert.deepEqual(Object.values((await db.query(`select role, barber_id from profiles where id = $1`, [W])).rows[0]), ["barber", mine]);
+  await as(W, `update barbers set whatsapp = '3000000000' where id = $1`, [mine]).catch(() => {});   // RLS: no hay fila editable
+  assert.equal((await db.query(`select whatsapp from barbers where id = $1`, [mine])).rows[0].whatsapp, "573014456110");
+  await fails(as(W, `select admin_set_status((select id from appointments where barber_id = $1 limit 1), 'cancelada')`, [mine]), "NO_AUTORIZADO");
+  await fails(as(W, `select admin_sale('[{"n":"Soda","q":1,"p":3000}]'::jsonb, 'Nequi', current_date, 'B', 'C', null)`), "NO_AUTORIZADO");
+  ok("barbero: ve solo sus citas, nada de finanzas, facturas ni clientes; no puede hacerse admin; su WhatsApp lo cambia solo el admin");
+}
+
 console.log(`\n${passed} pruebas OK`);

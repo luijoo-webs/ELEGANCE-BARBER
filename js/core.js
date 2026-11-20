@@ -1,6 +1,6 @@
 /* Núcleo compartido: conexión, estado, utilidades de fecha (America/Bogota), errores y UI básica. */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, TURNSTILE_SITE_KEY, GA_ID } from "./config.js?v=20261114a";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, TURNSTILE_SITE_KEY, GA_ID } from "./config.js?v=20261120a";
 
 export const CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 export const sb = CONFIGURED
@@ -157,6 +157,10 @@ const ERRORS = {
   CELULAR_INVALIDO: "Escribe un celular válido para contactarte.",
   CORREO_INVALIDO: "Escribe un correo válido: ahí te llega la confirmación y el recordatorio.",
   NO_AUTORIZADO: "No tienes permisos para esta acción.",
+  CORREO_EN_USO: "Ese correo ya está registrado de otra forma. Pide a la persona que inicie sesión una vez e inténtalo de nuevo.",
+  INVITACION_FALLIDA: "No se pudo enviar la invitación. Revisa el correo e inténtalo de nuevo.",
+  ES_ADMINISTRADOR: "Ese correo es de un administrador: ya ve todo el panel.",
+  ROL_NO_ASIGNADO: "La cuenta existe, pero no se pudo asignar el rol. Inténtalo de nuevo.",
   SOLO_CANCELADAS: "Solo se pueden eliminar citas canceladas, completadas o de quien no vino.",
   CITA_NO_ENCONTRADA: "La cita ya no existe.",
   PRODUCTO_NO_DISPONIBLE: "Un producto de tu carrito cambió o ya no está disponible. Actualiza la página y revísalo.",

@@ -3,8 +3,8 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday, ymd, toIso, hhmm,
   fmtTime, fmtDate, fmtDay, fmtDateTime, minutes, fromMinutes, shortTime, STATUS, statusBadge, friendly, toast, loader, emptyState,
   formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin, extrasText, extrasTotal, prodMini
-} from "./core.js?v=20261114a";
-import { svcPhoto } from "./public.js?v=20261114a";
+} from "./core.js?v=20261120a";
+import { svcPhoto } from "./public.js?v=20261120a";
 
 // El tercer dato abre un grupo en el menú.
 const SECTIONS = [
@@ -678,6 +678,10 @@ function barberEditor(b = null) {
       <label class="field"><span>Nombre</span><input name="name" required maxlength="80" value="${esc(b?.name)}"></label>
       <label class="field"><span>Especialidades (separadas por coma)</span><input name="specialties" maxlength="300" value="${esc((b?.specialties || []).join(", "))}" placeholder="Ej.: fade, barba, diseño"></label>
       <label class="field"><span>Descripción</span><textarea name="bio" rows="3" maxlength="600">${esc(b?.bio)}</textarea></label>
+      <label class="field"><span>WhatsApp del barbero</span><input name="whatsapp" type="tel" inputmode="tel" maxlength="20" value="${esc(b?.whatsapp || "")}" placeholder="Ej.: 3014456110">
+        <small class="muted">Las reservas con este barbero le llegan a este número. Vacío = al WhatsApp de la barbería.</small></label>
+      <label class="field"><span>Correo de su cuenta (opcional)</span><input name="account_email" type="email" maxlength="200" autocomplete="off" placeholder="Para que vea su agenda">
+        <small class="muted" id="accHint">Le llega una invitación y él mismo crea su contraseña. Solo verá sus citas, nunca finanzas ni configuración.</small></label>
       <label class="field"><span>Orden</span><input type="number" name="sort_order" value="${b?.sort_order ?? 0}"></label>
       ${imgField("photo", b?.photo_url, "Fotografía")}
       <label class="check"><input type="checkbox" name="active" ${b?.active === false ? "" : "checked"}> Activo (recibe reservas)</label>
@@ -685,10 +689,18 @@ function barberEditor(b = null) {
       ${b ? `<button class="btn btn--ghost btn--danger-text btn--block" type="button" id="delBarber">Eliminar barbero</button>` : ""}
     </form>`, { wide: true });
   const form = $("#barForm", m.el);
+  let account = "";   // correo de la cuenta que ya tiene este barbero
+  if (b) sb.from("profiles").select("email").eq("barber_id", b.id).eq("role", "barber").maybeSingle().then(({ data }) => {
+    if (!data?.email) return;
+    account = data.email; form.account_email.value = account;
+    $("#accHint", m.el).textContent = "Ya tiene cuenta con este correo. Escribe otro solo si cambia de cuenta.";
+  });
   const futureCount = async () => b ? (await sb.from("appointments").select("id", { count: "exact", head: true }).eq("barber_id", b.id).in("status", ["pendiente", "confirmada"]).gte("starts_at", new Date().toISOString())).count || 0 : 0;
   form.addEventListener("submit", (e) => {
     e.preventDefault(); const f = formData(form);
     if (!f.name.trim()) return setMsg($("#barMsg", m.el), "Escribe el nombre.");
+    const wd = f.whatsapp.replace(/\D/g, ""), whatsapp = wd ? (wd.length === 10 ? "57" + wd : wd) : null;
+    if (whatsapp && !/^\d{7,15}$/.test(whatsapp)) return setMsg($("#barMsg", m.el), "Escribe un WhatsApp válido, por ejemplo 3014456110.");
     busy(e.submitter, async () => {
       try {
         if (b?.active && !form.active.checked) {
@@ -697,10 +709,17 @@ function barberEditor(b = null) {
         }
         const row = { name: f.name.trim(), bio: f.bio.trim() || null, sort_order: Number(f.sort_order) || 0, active: form.active.checked,
           specialties: f.specialties.split(",").map((x) => x.trim()).filter(Boolean).slice(0, 12),
-          photo_url: await imgValue(form, "photo", b?.photo_url, "barberos") };
-        const { error } = b ? await sb.from("barbers").update(row).eq("id", b.id) : await sb.from("barbers").insert(row);
+          whatsapp, photo_url: await imgValue(form, "photo", b?.photo_url, "barberos") };
+        const { data: saved, error } = b ? await sb.from("barbers").update(row).eq("id", b.id).select("id").single() : await sb.from("barbers").insert(row).select("id").single();
         if (error) throw error;
-        m.close(); toast("Barbero guardado."); refresh();
+        const email = f.account_email.trim().toLowerCase();
+        if (email && email !== account) {
+          const { data: r, error: fe } = await sb.functions.invoke("equipo", { body: { email, barber_id: saved.id } });
+          const code = fe ? (await fe.context?.json?.().catch(() => null))?.error || fe.message : null;
+          if (code) { b = { ...row, id: saved.id }; return setMsg($("#barMsg", m.el), `Barbero guardado, pero la cuenta no: ${friendly({ message: code })}`); }
+          toast(r.invited ? `Invitación enviada a ${email}.` : `${email} ya tenía cuenta: ahora ve la agenda de ${row.name}.`);
+        } else toast("Barbero guardado.");
+        m.close(); refresh();
       } catch (err) { setMsg($("#barMsg", m.el), /^(Formato|La imagen)/.test(err.message) ? err.message : friendly(err)); }
     });
   });

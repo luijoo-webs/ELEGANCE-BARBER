@@ -1,9 +1,9 @@
 /* Cuentas de cliente: registro, sesión, recuperación, perfil y mis citas. */
 import {
   sb, State, SITE_URL, $, esc, friendly, toast, loader, emptyState, busy, setMsg, formData, confirmDialog, modal,
-  fmtDate, fmtTime, durLabel, priceLabel, statusBadge, ymd, loadProfile, waLink, consentChecks, consentMissing, logConsent, isAdmin
-} from "./core.js?v=20261114a";
-import { mountSlotPicker } from "./public.js?v=20261114a";
+  fmtDate, fmtTime, durLabel, priceLabel, statusBadge, ymd, loadProfile, waLink, consentChecks, consentMissing, logConsent, isAdmin, extrasText
+} from "./core.js?v=20261120a";
+import { mountSlotPicker } from "./public.js?v=20261120a";
 
 const back = (q) => (q.volver === "reservar" ? "#/reservar" : q.volver === "admin" || isAdmin() ? "#/admin" : "#/cuenta");   // el admin entra directo al panel
 const R = () => State.settings.reservas || {};
@@ -24,10 +24,11 @@ export async function processAuthLink() {
   if (err) return cleanUrl(`#/cuenta/enlace-invalido`);
   const tokenHash = q.get("token_hash"), type = q.get("type");
   if (!tokenHash || !type) return;
-  if (type === "recovery") await sb.auth.signOut({ scope: "local" }).catch(() => {});
+  const setPw = type === "recovery" || type === "invite";   // la invitación de un barbero termina creando su contraseña
+  if (setPw) await sb.auth.signOut({ scope: "local" }).catch(() => {});
   const { error } = await sb.auth.verifyOtp({ token_hash: tokenHash, type });
   if (error) return cleanUrl(`#/cuenta/enlace-invalido`);
-  if (type === "recovery") { Recovery.start(); return cleanUrl("#/cuenta/nueva-clave"); }
+  if (setPw) { Recovery.start(); return cleanUrl("#/cuenta/nueva-clave"); }
   cleanUrl("#/cuenta/confirmada");
 }
 
@@ -147,6 +148,21 @@ export async function viewAccount(sub, q, id) {
 }
 const Booking_hasDraft = () => { try { return !!JSON.parse(sessionStorage.getItem("eb_reserva"))?.serviceIds?.length; } catch { return false; } };
 
+// Agenda del barbero, por día. Solo trae sus citas (RLS): nada de finanzas ni de otros barberos.
+const clientWa = (phone) => { const d = String(phone || "").replace(/\D/g, ""); return d.length >= 7 ? `https://wa.me/${d.length === 10 ? "57" + d : d}` : ""; };
+function barberAgenda(list) {
+  const days = {};
+  for (const a of list) (days[ymd(new Date(a.starts_at))] ||= []).push(a);
+  return `<h2 class="h-sec">Mi agenda</h2>${list.length ? Object.entries(days).map(([d, items]) => `
+    <h3 class="agenda-day">${d === ymd(new Date()) ? "Hoy · " : ""}${esc(fmtDate(items[0].starts_at))} <small class="muted">${items.length} cita${items.length > 1 ? "s" : ""}</small></h3>
+    ${items.map((a) => `<article class="appt appt--compact"><div class="appt__body">
+      <div class="appt__top"><h3>${fmtTime(a.starts_at)} – ${fmtTime(a.ends_at)} · ${esc(a.client_name)}</h3>${statusBadge(a.status)}</div>
+      <p class="muted">${esc(a.service_name)}${a.extras?.length ? ` · ${esc(extrasText(a.extras))}` : ""}${a.payment_method ? ` · Paga con ${esc(a.payment_method)}` : ""}</p>
+      ${a.client_notes ? `<p class="muted small">Nota: ${esc(a.client_notes)}</p>` : ""}
+      ${clientWa(a.client_phone) ? `<a class="btn btn--sm btn--ghost" href="${esc(clientWa(a.client_phone))}" target="_blank" rel="noopener">WhatsApp de ${esc(a.client_name.split(" ")[0] || "cliente")} · ${esc(a.client_phone)}</a>` : ""}
+    </div></article>`).join("")}`).join("") : `<p class="muted">No tienes citas próximas.</p>`}`;
+}
+
 async function viewDashboard() {
   const p = State.profile || {};
   const isBarber = p.role === "barber" && p.barber_id;
@@ -182,10 +198,7 @@ async function viewDashboard() {
     </header>
     <div class="account__grid">
       <div>
-        ${isBarber ? `<h2 class="h-sec">Mi agenda</h2>${agenda.data?.length ? agenda.data.map((a) => `<article class="appt appt--compact"><div class="appt__body">
-          <div class="appt__top"><h3>${esc(fmtDate(a.starts_at))} · ${fmtTime(a.starts_at)}</h3>${statusBadge(a.status)}</div>
-          <p class="muted">${esc(a.service_name)} · ${esc(a.client_name)}${a.client_phone ? ` · ${esc(a.client_phone)}` : ""}</p>
-          ${a.client_notes ? `<p class="muted small">Nota: ${esc(a.client_notes)}</p>` : ""}</div></article>`).join("") : `<p class="muted">No tienes citas próximas.</p>`}` : ""}
+        ${isBarber ? barberAgenda(agenda.data || []) : ""}
         <h2 class="h-sec">Próximas citas</h2>
         ${upcoming.length ? upcoming.map((a) => card(a, true)).join("") : emptyState("No tienes citas próximas.", "", `<a class="btn" href="#/reservar">Reservar ahora</a>`)}
         <h2 class="h-sec">Historial</h2>

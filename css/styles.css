@@ -1198,3 +1198,6 @@ body.is-admin .ticket2 input { min-height: 34px; padding: 5px 9px; background: r
 }
 .toolbar .chip { text-decoration: none; }
 @media print { .invdoc header { padding-right: 0; } }
+.agenda-day { margin: 18px 0 8px; font-size: 1rem; }
+.agenda-day::first-letter { text-transform: uppercase; }
+.agenda-day small { font-weight: 400; margin-left: 6px; }

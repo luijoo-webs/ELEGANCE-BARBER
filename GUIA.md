@@ -66,6 +66,13 @@ Entra a `https://theelegancebarber.com/#/admin` con una cuenta de administrador.
 - **Correos:** al guardar en GitHub no se publican. Hay que pegar `index.ts` en Supabase → Edge Functions → `notificaciones` → Code y pulsar Deploy.
 - **Un servicio externo nuevo** (por ejemplo un script o un mapa distinto): agrégalo a la línea `Content-Security-Policy` de `index.html`, o el navegador lo bloqueará. Las imágenes externas con `https` ya están permitidas.
 
+### Cuentas de los barberos
+
+- **Dar acceso a un barbero:** Panel → Barberos → Editar → escribe su **WhatsApp** y el **correo de su cuenta** → Guardar. Le llega una invitación al correo y él mismo crea su contraseña. Si ya tenía cuenta, solo se le da el acceso.
+- **Qué ve el barbero:** en "Mi cuenta", su agenda por día, con el nombre, el servicio, la nota y el WhatsApp de cada cliente. No ve finanzas, facturas, inventario, clientes ni configuración.
+- **WhatsApp de las reservas:** cuando alguien reserva con un barbero que tiene WhatsApp, el mensaje le llega a él. Sin número, le llega a la barbería.
+- **Quitar el acceso:** Panel → Clientes → la persona → Rol: Cliente.
+
 ### Aparecer en Google
 
 - **Datos que lee Google:** están en `index.html` (título, descripción, ficha de la barbería y lista de servicios). Si cambia la dirección, el teléfono o la ciudad, hay que cambiarlos ahí también, además de en el panel.

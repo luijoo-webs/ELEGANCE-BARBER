@@ -3,7 +3,7 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday,
   fmtDay, fmtTime, fmtDate, hhmm, ymd, friendly, toast, loader, emptyState, busy, scheduleByDay, barberWorkDays, waLink, setMsg,
   mapAllowed, consentChecks, consentMissing, logConsent, loadProfile, formData, extrasText, extrasTotal, modal, minutes, captchaSlot, bookGuest, statusBadge, SITE_URL, SHOP, SHOP_LIST, SHOP_ITEMS
-} from "./core.js?v=20261114a";
+} from "./core.js?v=20261120a";
 
 const N = () => State.settings.negocio || {};
 const R = () => State.settings.reservas || {};
@@ -760,7 +760,11 @@ const PAY = [["Efectivo", '<rect x="2" y="6" width="20" height="12" rx="2"/><cir
   ["Transferencia", '<path d="M4 8h15l-4-4M20 16H5l4 4"/>'], ["Tarjeta", '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>']];
 const svcLines = (a) => a.services?.length ? a.services : [{ n: a.service_name, p: a.price }];
 
-const waDigits = () => { const d = String(N().telefono || "").replace(/\D/g, ""); return d.length === 10 ? "57" + d : d; };
+// La reserva le llega al WhatsApp del barbero asignado; sin número propio, al de la barbería.
+const waDigits = (list) => {
+  const b = list && State.barbers.find((x) => x.id === list[0].barber_id || x.name === list[0].barber_name);
+  const d = String(b?.whatsapp || N().telefono || "").replace(/\D/g, ""); return d.length === 10 ? "57" + d : d;
+};
 function waMessage(list) {
   const a = list[0], total = list.every((x) => x.price != null) ? list.reduce((t, x) => t + Number(x.price), 0) + extrasTotal(a.extras) : null;
   return ["Hola, acabo de reservar en la web:", a.link_token && `Ver la cita con fotos:\n${SITE_URL}#/c/${a.link_token}\n`, `Nombre: ${a.client_name}`, a.client_phone && `Celular: ${a.client_phone}`,
@@ -768,9 +772,9 @@ function waMessage(list) {
     `Barbero: ${a.barber_name}`, a.extras?.length && `Adicionales: ${extrasText(a.extras)}`, a.payment_method && `Pago: ${a.payment_method}`, total != null && `Total: ${money(total)}`].filter(Boolean).join("\n");
 }
 // WhatsApp solo deja el mensaje escrito con un número; los enlaces wa.me/message no aceptan texto, y entonces se copia para pegarlo.
-const waBookingUrl = (list) => waDigits() ? `https://wa.me/${waDigits()}?text=${encodeURIComponent(waMessage(list))}` : waLink();
+const waBookingUrl = (list) => waDigits(list) ? `https://wa.me/${waDigits(list)}?text=${encodeURIComponent(waMessage(list))}` : waLink();
 function sendToWa(win, list) {
-  if (!waDigits()) navigator.clipboard?.writeText(waMessage(list)).catch(() => {});
+  if (!waDigits(list)) navigator.clipboard?.writeText(waMessage(list)).catch(() => {});
   if (win) win.location.href = waBookingUrl(list);
 }
 document.addEventListener("click", (e) => { const c = e.target.closest("[data-wa-copy]"); if (c) navigator.clipboard?.writeText(c.dataset.waCopy).catch(() => {}); });
@@ -822,8 +826,8 @@ function doneHtml(list, guestEmail) {
     </div>
     ${pend ? `<p class="muted">La barbería confirmará tu cita pronto.${a.pending_expires_at ? ` Si no se confirma antes de ${esc(fmtDateTime2(a.pending_expires_at))}, el horario se libera.` : ""}</p>` : ""}
     ${guestEmail ? `<p class="muted">Te enviamos la confirmación a <strong>${esc(guestEmail)}</strong> y un recordatorio 2 horas antes. Para cambiar o cancelar, escríbenos${wa ? " por WhatsApp" : ""}.</p>` : ""}
-    ${wa ? `<p class="muted">${waDigits() ? "Abrimos WhatsApp con tu reserva escrita: solo toca enviar. Si no se abrió, usa este botón." : "Abrimos WhatsApp y copiamos tu reserva: pégala en el chat y envíala. Si no se abrió, usa este botón."}</p>` : ""}
-    <div class="row">${wa ? `<a class="btn" href="${esc(wa)}" target="_blank" rel="noopener" ${waDigits() ? "" : `data-wa-copy="${esc(waMessage(list))}"`}>Enviar mi reserva por WhatsApp</a>` : ""}${guestEmail ? "" : `<a class="btn btn--ghost" href="#/cuenta">Ver mis citas</a>`}<a class="btn btn--ghost" href="#/">Volver al inicio</a></div>
+    ${wa ? `<p class="muted">${waDigits(list) ? "Abrimos WhatsApp con tu reserva escrita: solo toca enviar. Si no se abrió, usa este botón." : "Abrimos WhatsApp y copiamos tu reserva: pégala en el chat y envíala. Si no se abrió, usa este botón."}</p>` : ""}
+    <div class="row">${wa ? `<a class="btn" href="${esc(wa)}" target="_blank" rel="noopener" ${waDigits(list) ? "" : `data-wa-copy="${esc(waMessage(list))}"`}>Enviar mi reserva por WhatsApp</a>` : ""}${guestEmail ? "" : `<a class="btn btn--ghost" href="#/cuenta">Ver mis citas</a>`}<a class="btn btn--ghost" href="#/">Volver al inicio</a></div>
   </section>`;
 }
 const fmtDateTime2 = (d) => d ? `${fmtDate(d)} ${fmtTime(d)}` : "";
