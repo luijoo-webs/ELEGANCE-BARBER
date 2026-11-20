@@ -3,8 +3,8 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday, ymd, toIso, hhmm,
   fmtTime, fmtDate, fmtDay, fmtDateTime, minutes, fromMinutes, shortTime, STATUS, statusBadge, friendly, toast, loader, emptyState,
   formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin, extrasText, extrasTotal, prodMini
-} from "./core.js?v=20261120a";
-import { svcPhoto } from "./public.js?v=20261120a";
+} from "./core.js?v=20261120b";
+import { svcPhoto } from "./public.js?v=20261120b";
 
 // El tercer dato abre un grupo en el menú.
 const SECTIONS = [
@@ -681,7 +681,9 @@ function barberEditor(b = null) {
       <label class="field"><span>WhatsApp del barbero</span><input name="whatsapp" type="tel" inputmode="tel" maxlength="20" value="${esc(b?.whatsapp || "")}" placeholder="Ej.: 3014456110">
         <small class="muted">Las reservas con este barbero le llegan a este número. Vacío = al WhatsApp de la barbería.</small></label>
       <label class="field"><span>Correo de su cuenta (opcional)</span><input name="account_email" type="email" maxlength="200" autocomplete="off" placeholder="Para que vea su agenda">
-        <small class="muted" id="accHint">Le llega una invitación y él mismo crea su contraseña. Solo verá sus citas, nunca finanzas ni configuración.</small></label>
+        <small class="muted" id="accHint">Solo verá sus citas, nunca finanzas ni configuración.</small></label>
+      <label class="field" id="accPw"><span>Contraseña para su cuenta</span><input name="account_password" type="password" minlength="8" maxlength="72" autocomplete="new-password">
+        <small class="muted">Mínimo 8 caracteres. Se la das al barbero para que entre en Mi cuenta. No se envía ningún correo.</small></label>
       <label class="field"><span>Orden</span><input type="number" name="sort_order" value="${b?.sort_order ?? 0}"></label>
       ${imgField("photo", b?.photo_url, "Fotografía")}
       <label class="check"><input type="checkbox" name="active" ${b?.active === false ? "" : "checked"}> Activo (recibe reservas)</label>
@@ -694,6 +696,7 @@ function barberEditor(b = null) {
     if (!data?.email) return;
     account = data.email; form.account_email.value = account;
     $("#accHint", m.el).textContent = "Ya tiene cuenta con este correo. Escribe otro solo si cambia de cuenta.";
+    $("#accPw", m.el).hidden = true;   // su contraseña la cambia él desde Mi cuenta
   });
   const futureCount = async () => b ? (await sb.from("appointments").select("id", { count: "exact", head: true }).eq("barber_id", b.id).in("status", ["pendiente", "confirmada"]).gte("starts_at", new Date().toISOString())).count || 0 : 0;
   form.addEventListener("submit", (e) => {
@@ -714,10 +717,10 @@ function barberEditor(b = null) {
         if (error) throw error;
         const email = f.account_email.trim().toLowerCase();
         if (email && email !== account) {
-          const { data: r, error: fe } = await sb.functions.invoke("equipo", { body: { email, barber_id: saved.id } });
+          const { data: r, error: fe } = await sb.functions.invoke("equipo", { body: { email, barber_id: saved.id, password: f.account_password || "" } });
           const code = fe ? (await fe.context?.json?.().catch(() => null))?.error || fe.message : null;
           if (code) { b = { ...row, id: saved.id }; return setMsg($("#barMsg", m.el), `Barbero guardado, pero la cuenta no: ${friendly({ message: code })}`); }
-          toast(r.invited ? `Invitación enviada a ${email}.` : `${email} ya tenía cuenta: ahora ve la agenda de ${row.name}.`);
+          toast(r.created ? `Cuenta creada: ${email} ya puede entrar en Mi cuenta.` : `${email} ya tenía cuenta: ahora ve la agenda de ${row.name}.`);
         } else toast("Barbero guardado.");
         m.close(); refresh();
       } catch (err) { setMsg($("#barMsg", m.el), /^(Formato|La imagen)/.test(err.message) ? err.message : friendly(err)); }

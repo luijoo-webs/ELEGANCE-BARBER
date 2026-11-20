@@ -1,9 +1,8 @@
 // Cuentas del equipo: el administrador da acceso a un barbero con su correo.
-// Si la persona no tiene cuenta, le llega la invitación (plantilla "Invite user") y ella misma crea su contraseña.
+// Si la persona no tiene cuenta, se crea ya confirmada con la contraseña que escribe el dueño (sin correos).
 // Si ya tiene cuenta, solo se le asigna el rol. Usa la service_role, que vive solo en Supabase.
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const SITE = "https://theelegancebarber.com/";
 const CORS = {
   "Access-Control-Allow-Origin": "https://theelegancebarber.com",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -32,11 +31,14 @@ Deno.serve(async (req) => {
   if (!barber) return reply({ error: "BARBERO_NO_DISPONIBLE" }, 400);
 
   let { data: prof } = await admin.from("profiles").select("id, role").eq("email", email).maybeSingle();
-  let invited = false;
+  let created = false;
   if (!prof) {
-    const { data, error } = await admin.auth.admin.inviteUserByEmail(email, { redirectTo: SITE, data: { full_name: barber.name } });
-    if (error) return reply({ error: /already|registered/i.test(error.message) ? "CORREO_EN_USO" : "INVITACION_FALLIDA", detail: error.message }, 400);
-    invited = true;
+    // Cuenta lista para entrar, ya confirmada: no se envía ningún correo. La contraseña la escribe el dueño en el panel.
+    const password = String(body?.password || "");
+    if (password.length < 8 || password.length > 72) return reply({ error: "CLAVE_CORTA" }, 400);
+    const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { full_name: barber.name } });
+    if (error) return reply({ error: /already|registered|exists/i.test(error.message) ? "CORREO_EN_USO" : "CUENTA_FALLIDA", detail: error.message }, 400);
+    created = true;
     prof = { id: data.user.id, role: "client" };
   }
   if (prof.role === "admin") return reply({ error: "ES_ADMINISTRADOR" }, 400);   // no se le quita el acceso total a un dueño por error
@@ -45,5 +47,5 @@ Deno.serve(async (req) => {
   await admin.from("profiles").update({ role: "client", barber_id: null }).eq("barber_id", barber.id).neq("id", prof.id);
   const { error: upErr } = await admin.from("profiles").update({ role: "barber", barber_id: barber.id }).eq("id", prof.id);
   if (upErr) return reply({ error: "ROL_NO_ASIGNADO", detail: upErr.message }, 500);
-  return reply({ ok: true, invited, barber: barber.name });
+  return reply({ ok: true, created, barber: barber.name });
 });
