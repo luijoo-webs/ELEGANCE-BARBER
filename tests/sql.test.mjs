@@ -545,4 +545,47 @@ console.log("Migración 18 (cuenta de barbero y su WhatsApp)");
   ok("barbero: ve solo sus citas, nada de finanzas, facturas ni clientes; no puede hacerse admin; su WhatsApp lo cambia solo el admin");
 }
 
+console.log("Migración 19 (panel del barbero)");
+{
+  const m19 = readFileSync(new URL("../supabase/19_panel_barbero.sql", import.meta.url), "utf8");
+  await db.exec(m19); await db.exec(m19);
+  const W = "00000000-0000-0000-0000-0000000000c1";   // la cuenta de barbero creada en la prueba de la 18
+  const [{ barber_id: mine }] = (await db.query(`select barber_id from profiles where id = $1`, [W])).rows;
+  assert.equal((await as(W, `select is_admin() a`))[0].a, false, "fuera de staff_* no es admin");
+  const all = (await db.query(`select count(*)::int n from appointments`)).rows[0].n;
+  assert.equal((await as(W, `select count(*)::int n from appointments`))[0].n, all, "ve la agenda de toda la barbería");
+  const roles = (await as(W, `select distinct role from profiles`)).map((r) => r.role).sort();
+  assert.ok(!roles.includes("admin"), "no ve cuentas de administradores");
+  const fin = await as(W, `select description, entry_date::text d from finance_entries`);
+  const today = (await db.query(`select (now() at time zone 'America/Bogota')::date::text d`)).rows[0].d;
+  assert.ok(fin.every((r) => r.description.startsWith("Venta") && r.d === today), "de finanzas solo ve las ventas de hoy");
+  assert.ok((await as(W, `select (issued_at at time zone 'America/Bogota')::date::text d from invoices`)).every((r) => r.d === today), "de facturas solo ve las de hoy");
+  // Citas: cambia estados como el admin, pero solo por staff_*; no borra.
+  const [{ id: ap }] = (await db.query(`select id from appointments where status = 'confirmada' and starts_at > now() limit 1`)).rows;
+  await fails(as(W, `select admin_set_status($1, 'en_proceso')`, [ap]), "NO_AUTORIZADO");
+  await as(W, `select staff_set_status($1, 'en_proceso')`, [ap]);
+  assert.equal((await db.query(`select status from appointments where id = $1`, [ap])).rows[0].status, "en_proceso");
+  await as(W, `select staff_set_notes($1, 'Llegó temprano')`, [ap]);
+  await fails(as(W, `select admin_delete_appointment($1)`, [ap]), "NO_AUTORIZADO");
+  await fails(as(U.beto, `select staff_set_status($1, 'cancelada')`, [ap]), "NO_AUTORIZADO");
+  // Agenda: crea una cita y un bloqueo.
+  const [{ id: sv }] = (await db.query(`select id from services where active and deleted_at is null limit 1`)).rows;
+  const [{ slot_start }] = await as(null, `select slot_start from get_availability($1, $2, ((now() at time zone 'America/Bogota')::date + 20), 7) limit 1`, [sv, mine]);
+  const [{ id: nueva }] = await as(W, `select staff_save_appointment(null, null, 'Cliente Mostrador', '3001231234', $1, $2, $3) id`, [sv, mine, slot_start]);
+  assert.ok(nueva);
+  await as(W, `insert into time_off(barber_id, starts_at, ends_at, kind, reason) values ($1, now() + interval '30 days', now() + interval '30 days 1 hour', 'bloqueo', 'Almuerzo')`, [mine]);
+  // Ventas: hoy sí; otro día no.
+  const [{ r: v }] = await as(W, `select staff_sale('[{"n":"Corte","q":1,"p":20000,"svc":true}]'::jsonb, 'Efectivo', $1::date, 'Barbero', 'Cliente') r`, [today]);
+  assert.equal(Number(v.total), 20000);
+  await fails(as(W, `select staff_sale('[{"n":"Corte","q":1,"p":20000}]'::jsonb, 'Efectivo', ($1::date - 1))`, [today]), "VENTA_INVALIDA");
+  await fails(as(U.beto, `select staff_sale('[{"n":"Corte","q":1,"p":20000}]'::jsonb, 'Efectivo', $1::date)`, [today]), "NO_AUTORIZADO");
+  assert.equal((await as(W, `select is_admin() a`))[0].a, false, "la marca no sobrevive a la llamada");
+  // Configuración: solo su propio WhatsApp.
+  await as(W, `select staff_set_whatsapp('301 445 6110')`);
+  assert.equal((await db.query(`select whatsapp from barbers where id = $1`, [mine])).rows[0].whatsapp, "573014456110");
+  const others = (await db.query(`select count(*)::int n from barbers where id <> $1 and whatsapp = '573014456110'`, [mine])).rows[0].n;
+  assert.equal(others, 0);
+  ok("barbero: agenda, citas y ventas iguales al admin por staff_*; no borra, no vende otro día, no ve finanzas ni facturas viejas; cambia solo su WhatsApp");
+}
+
 console.log(`\n${passed} pruebas OK`);

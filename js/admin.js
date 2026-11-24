@@ -2,9 +2,9 @@
 import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday, ymd, toIso, hhmm,
   fmtTime, fmtDate, fmtDay, fmtDateTime, minutes, fromMinutes, shortTime, STATUS, statusBadge, friendly, toast, loader, emptyState,
-  formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin, extrasText, extrasTotal, prodMini
-} from "./core.js?v=20261120b";
-import { svcPhoto } from "./public.js?v=20261120b";
+  formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin, isBarber, extrasText, extrasTotal, prodMini
+} from "./core.js?v=20261124a";
+import { svcPhoto } from "./public.js?v=20261124a";
 
 // El tercer dato abre un grupo en el menú.
 const SECTIONS = [
@@ -13,6 +13,9 @@ const SECTIONS = [
   ["servicios", "Servicios", "Negocio"], ["barberos", "Barberos"], ["clientes", "Clientes"], ["horarios", "Horarios y cierres"],
   ["estadisticas", "Estadísticas", "Análisis"], ["configuracion", "Configuración"]
 ];
+// El barbero ve solo estas secciones; sus cambios van por staff_* (el servidor verifica que sea barbero).
+const STAFF_SECTIONS = [["agenda", "Agenda", "Hoy"], ["citas", "Citas"], ["ventas", "Ventas", "Caja"], ["configuracion", "Configuración"]];
+const rpcN = (n) => isAdmin() ? n : n.replace(/^admin_/, "staff_");
 const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 const q = async (p) => { const { data, error } = await p; if (error) throw error; return data; };
 const like = (t) => String(t).replace(/[,()%*\\]/g, " ").trim();   // texto seguro dentro de filtros or()
@@ -74,7 +77,7 @@ function bindAppts(root) {
     const qs = e.target.closest("[data-qst]");
     if (!qs) return apptDetail(r.dataset.appt);
     busy(qs, async () => {
-      const { error } = await sb.rpc("admin_set_status", { p_id: r.dataset.appt, p_status: qs.dataset.qst, p_reason: null });
+      const { error } = await sb.rpc(rpcN("admin_set_status"), { p_id: r.dataset.appt, p_status: qs.dataset.qst, p_reason: null });
       if (error) return toast(friendly(error), "err");
       toast(stToast(qs.dataset.qst)); refresh();
     });
@@ -111,8 +114,8 @@ function shell(sec, title, actions, body) {
   const logo = safeUrl(State.settings.negocio?.logo_url) || "assets/logo-crown-light.png";
   return `<div class="adm">
     <aside class="adm__side">
-      <a class="adm__brand" href="#/admin" aria-label="Panel — inicio"><img src="${esc(logo)}" alt=""><span><b>Elegance</b><small>Panel admin</small></span></a>
-      <nav aria-label="Secciones del panel">${SECTIONS.map(([k, v, g]) => `${g ? `<p class="adm__label">${g}</p>` : ""}<a href="#/admin/${k}" class="${k === sec ? "is-on" : ""}" ${k === sec ? 'aria-current="page"' : ""}>${ico(k)}${v}</a>`).join("")}</nav>
+      <a class="adm__brand" href="#/admin" aria-label="Panel — inicio"><img src="${esc(logo)}" alt=""><span><b>Elegance</b><small>${isAdmin() ? "Panel admin" : "Panel barbero"}</small></span></a>
+      <nav aria-label="Secciones del panel">${(isAdmin() ? SECTIONS : STAFF_SECTIONS).map(([k, v, g]) => `${g ? `<p class="adm__label">${g}</p>` : ""}<a href="#/admin/${k}" class="${k === sec ? "is-on" : ""}" ${k === sec ? 'aria-current="page"' : ""}>${ico(k)}${v}</a>`).join("")}</nav>
       <div class="adm__bottom"><a href="#/">${ico("sitio")}Ver sitio</a><a href="#/cuenta">${ico("cuenta")}Mi cuenta</a><a href="#/" data-logout>${ico("salir")}Cerrar sesión</a></div>
     </aside>
     <div class="adm__main"><div class="adm__head"><h1>${title}</h1><div class="row">${actions || ""}</div></div>${body}</div></div>`;
@@ -120,14 +123,43 @@ function shell(sec, title, actions, body) {
 
 export async function view(sec, sub, query) {
   if (channel) { sb.removeChannel(channel); channel = null; }
-  if (!isAdmin()) return { html: emptyState("No tienes permisos de administrador.") };
+  if (!isAdmin() && !isBarber()) return { html: emptyState("No tienes permisos de administrador.") };
+  if (!isAdmin()) {   // barbero
+    if (sec === "resumen") sec = "agenda";
+    if (!STAFF_SECTIONS.some(([k]) => k === sec)) return { html: shell("", "Sección no disponible", "", emptyState("Esta sección es solo para el administrador.")) };
+  }
   await loadPublic();   // con sesión de admin, RLS devuelve también lo inactivo
   const views = { resumen: vResumen, agenda: vAgenda, ventas: vVentas, facturas: vFacturas, inventario: vInventario, citas: vCitas, servicios: vServicios, barberos: vBarberos, clientes: vClientes,
-    horarios: vHorarios, configuracion: vConfig, consentimientos: vConsentimientos, estadisticas: vEstadisticas };
+    horarios: vHorarios, configuracion: isAdmin() ? vConfig : vMiConfig, consentimientos: vConsentimientos, estadisticas: vEstadisticas };
   const fn = views[sec];
   if (!fn) return { html: shell("", "Sección no encontrada", "", emptyState("Esa sección no existe.")) };
   try { return await fn(sub, query); }
   catch (e) { console.error(e); return { html: shell(sec, "Error", "", `<div class="notice notice--warn">${esc(friendly(e))}</div>`) }; }
+}
+
+/* ============================ CONFIGURACIÓN DEL BARBERO ============================
+   Solo su WhatsApp: ahí le llegan las reservas que le hacen a él. La contraseña se cambia en Mi cuenta. */
+async function vMiConfig() {
+  const b = State.barbers.find((x) => x.id === State.profile.barber_id) || {};
+  const html = shell("configuracion", "Configuración", "", `<div class="card" style="max-width:520px">
+    <form class="form" id="miCfg" novalidate>
+      <p class="muted">Barbero: <strong>${esc(b.name || "")}</strong></p>
+      <label class="field"><span>Mi WhatsApp</span><input name="whatsapp" type="tel" inputmode="tel" maxlength="20" value="${esc(b.whatsapp || "")}" placeholder="Ej.: 3014456110">
+        <small class="muted">Las reservas que te hagan te llegan a este número. Vacío = al WhatsApp de la barbería.</small></label>
+      <button class="btn btn--block" type="submit" data-busy="Guardando…">Guardar</button>
+      <p class="form-msg" id="miMsg" role="alert"></p>
+      <p class="muted small">Tu contraseña la cambias en <a href="#/cuenta">Mi cuenta</a>.</p>
+    </form></div>`);
+  const mount = () => $("#miCfg").addEventListener("submit", (e) => {
+    e.preventDefault(); const v = formData(e.target).whatsapp.replace(/\D/g, "");
+    if (v && !/^\d{7,15}$/.test(v)) return setMsg($("#miMsg"), "Escribe un WhatsApp válido, por ejemplo 3014456110.");
+    busy(e.submitter, async () => {
+      const { error } = await sb.rpc("staff_set_whatsapp", { p_whatsapp: v });
+      if (error) return setMsg($("#miMsg"), friendly(error));
+      toast("Número guardado."); refresh();
+    });
+  });
+  return { html, mount };
 }
 
 /* =============================== RESUMEN =============================== */
@@ -392,7 +424,7 @@ function apptEditor({ appt = null, date = todayYmd(), time = "", barberId = "", 
     if (!appt && !client && !(f.client_name || "").trim()) return setMsg($("#apptMsg", m.el), "Elige un cliente registrado o escribe un nombre.");
     if (!f.date || !f.time) return setMsg($("#apptMsg", m.el), "Elige fecha y hora.");
     busy(e.submitter, async () => {
-      const { error } = await sb.rpc("admin_save_appointment", {
+      const { error } = await sb.rpc(rpcN("admin_save_appointment"), {
         p_id: appt?.id || null, p_client_id: appt ? appt.client_id : client?.id || null, p_client_name: appt ? appt.client_name : (f.client_name || "").trim(),
         p_client_phone: f.client_phone || "", p_service: f.service, p_barber: f.barber, p_start: toIso(f.date, f.time),
         p_admin_notes: f.admin_notes, p_status: f.status
@@ -416,7 +448,7 @@ async function apptDetail(id) {
       <dt>Barbero</dt><dd>${esc(a.barber_name)}</dd>
       <dt>Fecha</dt><dd>${esc(fmtDate(a.starts_at, { year: "numeric" }))}</dd>
       <dt>Hora</dt><dd>${fmtTime(a.starts_at)} – ${fmtTime(a.ends_at)}</dd>
-      <dt>Contacto</dt><dd>${a.client_phone ? `<a href="tel:${esc(a.client_phone.replace(/[^\d+]/g, ""))}">${esc(a.client_phone)}</a> · <a href="https://wa.me/${esc(waNum(a.client_phone))}" target="_blank" rel="noopener">WhatsApp</a>` : "—"}${a.client_email ? ` · ${esc(a.client_email)}` : ""}${a.client_id ? ` · <a href="#/admin/clientes/${a.client_id}" data-close>ver cliente</a>` : " · sin cuenta"}</dd>
+      <dt>Contacto</dt><dd>${a.client_phone ? `<a href="tel:${esc(a.client_phone.replace(/[^\d+]/g, ""))}">${esc(a.client_phone)}</a> · <a href="https://wa.me/${esc(waNum(a.client_phone))}" target="_blank" rel="noopener">WhatsApp</a>` : "—"}${a.client_email ? ` · ${esc(a.client_email)}` : ""}${a.client_id ? (isAdmin() ? ` · <a href="#/admin/clientes/${a.client_id}" data-close>ver cliente</a>` : "") : " · sin cuenta"}</dd>
       <dt>Origen</dt><dd>${a.source === "admin" ? "Creada por administración" : "Reserva web"} · ${esc(fmtDateTime(a.created_at))}</dd>
       ${a.extras?.length ? `<dt>Adicionales</dt><dd>${esc(extrasText(a.extras))} · <strong>${money(extrasTotal(a.extras))}</strong></dd>` : ""}
       ${a.client_notes ? `<dt>Nota del cliente</dt><dd>${esc(a.client_notes)}</dd>` : ""}
@@ -428,7 +460,7 @@ async function apptDetail(id) {
       ${stepActions(a, "data-st")}
       ${inv ? `<button class="btn btn--sm" type="button" data-inv="${inv.id}">Ver factura</button>` : ""}
       ${active ? `<button class="btn btn--sm btn--ghost" data-edit>Reprogramar / editar</button><button class="btn btn--sm btn--ghost btn--danger-text" data-st="cancelada">Cancelar cita</button>` : ""}
-      ${["cancelada", "completada", "no_asistio"].includes(a.status) ? `<button class="btn btn--sm btn--ghost btn--danger-text" data-del>Eliminar definitivamente</button>` : ""}
+      ${isAdmin() && ["cancelada", "completada", "no_asistio"].includes(a.status) ? `<button class="btn btn--sm btn--ghost btn--danger-text" data-del>Eliminar definitivamente</button>` : ""}
     </div>
     <form class="form" id="notesForm"><label class="field"><span>Notas internas</span><textarea name="notes" rows="2" maxlength="2000">${esc(a.admin_notes || "")}</textarea></label>
       <button class="btn btn--sm btn--ghost" type="submit">Guardar nota</button></form>`, { wide: true });
@@ -445,7 +477,7 @@ async function apptDetail(id) {
     let reason = null;
     if (b.dataset.st === "cancelada") { reason = await askText("Cancelar cita", "Motivo (opcional; lo verá el cliente)"); if (reason === null) return; }
     busy(b, async () => {
-      const { error } = await sb.rpc("admin_set_status", { p_id: a.id, p_status: b.dataset.st, p_reason: reason });
+      const { error } = await sb.rpc(rpcN("admin_set_status"), { p_id: a.id, p_status: b.dataset.st, p_reason: reason });
       if (error) return toast(friendly(error), "err");
       m.close(); toast(stToast(b.dataset.st)); refresh();
     });
@@ -453,7 +485,7 @@ async function apptDetail(id) {
   $("#notesForm", m.el).addEventListener("submit", (e) => {
     e.preventDefault();
     busy(e.submitter, async () => {
-      const { error } = await sb.rpc("admin_set_notes", { p_id: a.id, p_notes: formData(e.target).notes });
+      const { error } = await sb.rpc(rpcN("admin_set_notes"), { p_id: a.id, p_notes: formData(e.target).notes });
       toast(error ? friendly(error) : "Nota guardada.", error ? "err" : "ok");
     });
   });
@@ -1177,7 +1209,7 @@ async function invoiceModal(id) {
   const state = i.voided_at ? "" : i.email_sent_at ? `Enviada a ${esc(i.client_email)} el ${esc(fmtDateTime(i.email_sent_at))}.` : i.client_email ? `Se enviará a ${esc(i.client_email)} en unos minutos.` : "Sin correo: escribe uno para enviársela.";
   const m = modal(`${invoiceDoc(i)}
     <div class="no-print invdoc__acts"><button class="btn" type="button" data-print>Imprimir o guardar PDF</button>
-      ${i.voided_at ? "" : `<form class="invdoc__mail" id="invMail" novalidate><label class="field"><span>Enviar por correo</span><input name="email" type="email" required maxlength="120" value="${esc(i.client_email)}" placeholder="cliente@correo.com"></label><button class="btn btn--ghost" type="submit" data-busy="Guardando…">${i.email_sent_at ? "Reenviar" : "Enviar"}</button></form>
+      ${i.voided_at || !isAdmin() ? "" : `<form class="invdoc__mail" id="invMail" novalidate><label class="field"><span>Enviar por correo</span><input name="email" type="email" required maxlength="120" value="${esc(i.client_email)}" placeholder="cliente@correo.com"></label><button class="btn btn--ghost" type="submit" data-busy="Guardando…">${i.email_sent_at ? "Reenviar" : "Enviar"}</button></form>
       <p class="muted small" id="invMsg" role="status">${state}</p>`}</div>`, { wide: true });
   $("[data-print]", m.el).addEventListener("click", () => window.print());
   $("#invMail", m.el)?.addEventListener("submit", (e) => {
@@ -1326,7 +1358,7 @@ async function vVentas() {
         <ul class="ticket2__items" id="tkItems"></ul>
         <div class="ticket2__sec"><span>Atendió</span><div class="tpills">${barbers.map((b) => `<button type="button" class="tpill" data-barber="${b.id}">${avatar(b.name, b.photo_url)}${esc(b.name)}</button>`).join("") || `<small>Sin barberos activos</small>`}</div></div>
         <div class="ticket2__sec"><span>Medio de pago</span><div class="tpay">${SALE_PAY.map(([m, ic], i) => `<button type="button" class="${i ? "" : "is-on"}" data-pay="${m}"><svg viewBox="0 0 24 24" aria-hidden="true">${ic}</svg>${m}</button>`).join("")}</div></div>
-        <div class="ticket2__row"><label><span>Cliente (opcional)</span><input id="tkClient" maxlength="80" placeholder="Nombre"></label><label><span>Fecha</span><input id="tkDate" type="date" value="${today}" max="${today}"></label></div>
+        <div class="ticket2__row"><label><span>Cliente (opcional)</span><input id="tkClient" maxlength="80" placeholder="Nombre"></label><label><span>Fecha</span><input id="tkDate" type="date" ${isAdmin() ? "" : `min="${today}" readonly`} value="${today}" max="${today}"></label></div>
         <label class="ticket2__mail"><span>Correo para enviarle la factura (opcional)</span><input id="tkEmail" type="email" maxlength="120" placeholder="cliente@correo.com" autocomplete="off"></label>
         <button class="pos__jump" id="tkJump" type="button" hidden>Ver venta <b id="tkJumpN"></b></button>
         <button class="ticket2__pay" id="tkPay" type="button" data-busy="Guardando…" disabled>Cobrar <b id="tkTotal">${money(0)}</b></button>
@@ -1371,7 +1403,7 @@ async function vVentas() {
       if (!day) return setMsg(msg, "Indica la fecha.");
       const sum = total(), mailTo = $("#tkEmail").value.trim();
       busy(e.currentTarget, async () => {
-        const { data, error } = await sb.rpc("admin_sale", { p_lines: lines.map((l) => ({ n: l.n, q: l.q, p: l.p, svc: l.svc })), p_method: method, p_day: day,
+        const { data, error } = await sb.rpc(rpcN("admin_sale"), { p_lines: lines.map((l) => ({ n: l.n, q: l.q, p: l.p, svc: l.svc })), p_method: method, p_day: day,
           p_barber: barber ? barberName(barber) : null, p_client: $("#tkClient").value.trim() || null, p_email: mailTo || null });
         if (error) return setMsg(msg, friendly(error));
         $("#ticket").innerHTML = `<div class="ticket2__done"><span class="ticket2__check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span><h2>¡Venta registrada!</h2><p class="ticket2__big">${money(sum)}</p><p>${esc(method)} · Factura ${invNo(data.number)}${mailTo ? `<br>Se enviará a ${esc(mailTo)}` : ""}</p><button class="btn btn--block btn--ghost" type="button" id="tkInv">Ver factura</button><button class="ticket2__pay" type="button" id="tkNew">Nueva venta</button></div>`;

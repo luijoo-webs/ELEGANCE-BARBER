@@ -1,6 +1,6 @@
 /* Núcleo compartido: conexión, estado, utilidades de fecha (America/Bogota), errores y UI básica. */
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/+esm";
-import { SUPABASE_URL, SUPABASE_ANON_KEY, TURNSTILE_SITE_KEY, GA_ID } from "./config.js?v=20261120b";
+import { SUPABASE_URL, SUPABASE_ANON_KEY, TURNSTILE_SITE_KEY, GA_ID } from "./config.js?v=20261124a";
 
 export const CONFIGURED = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 export const sb = CONFIGURED
@@ -104,6 +104,7 @@ export async function loadProfile() {
   State.user = user; State.profile = profile;
 }
 export const isAdmin = () => State.profile?.role === "admin";
+export const isBarber = () => State.profile?.role === "barber" && !!State.profile?.barber_id;   // mini panel: agenda, citas, ventas
 
 export function applyBrand() {
   const n = State.settings.negocio || {};

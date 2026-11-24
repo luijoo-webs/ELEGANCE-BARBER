@@ -1,11 +1,11 @@
 /* Cuentas de cliente: registro, sesión, recuperación, perfil y mis citas. */
 import {
   sb, State, SITE_URL, $, esc, friendly, toast, loader, emptyState, busy, setMsg, formData, confirmDialog, modal,
-  fmtDate, fmtTime, durLabel, priceLabel, statusBadge, ymd, loadProfile, waLink, consentChecks, consentMissing, logConsent, isAdmin, extrasText
-} from "./core.js?v=20261120b";
-import { mountSlotPicker } from "./public.js?v=20261120b";
+  fmtDate, fmtTime, durLabel, priceLabel, statusBadge, ymd, loadProfile, waLink, consentChecks, consentMissing, logConsent, isAdmin, isBarber, extrasText
+} from "./core.js?v=20261124a";
+import { mountSlotPicker } from "./public.js?v=20261124a";
 
-const back = (q) => (q.volver === "reservar" ? "#/reservar" : q.volver === "admin" || isAdmin() ? "#/admin" : "#/cuenta");   // el admin entra directo al panel
+const back = (q) => (q.volver === "reservar" ? "#/reservar" : q.volver === "admin" || isAdmin() || isBarber() ? "#/admin" : "#/cuenta");   // el admin entra directo al panel
 const R = () => State.settings.reservas || {};
 
 /* ---------- Enlaces de correo (confirmación y recuperación) ----------
@@ -194,7 +194,7 @@ async function viewDashboard() {
   const html = `<section class="account wrap">
     <header class="account__head">
       <div><p class="eyebrow">Mi cuenta</p><h1>Hola, ${esc((p.full_name || "").split(" ")[0] || "cliente")}</h1></div>
-      <div class="row"><a class="btn" href="#/reservar">Nueva reserva</a></div>
+      <div class="row">${isBarber() ? `<a class="btn" href="#/admin">Mi panel</a>` : ""}<a class="btn${isBarber() ? " btn--ghost" : ""}" href="#/reservar">Nueva reserva</a></div>
     </header>
     <div class="account__grid">
       <div>

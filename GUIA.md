@@ -69,7 +69,8 @@ Entra a `https://theelegancebarber.com/#/admin` con una cuenta de administrador.
 ### Cuentas de los barberos
 
 - **Dar acceso a un barbero:** Panel → Barberos → Editar → escribe su **WhatsApp**, el **correo** y una **contraseña** para su cuenta → Guardar. La cuenta queda lista al instante, sin correos: dale el correo y la contraseña al barbero. Si ya tenía cuenta, solo se le da el acceso. Él puede cambiar su contraseña en Mi cuenta.
-- **Qué ve el barbero:** en "Mi cuenta", su agenda por día, con el nombre, el servicio, la nota y el WhatsApp de cada cliente. No ve finanzas, facturas, inventario, clientes ni configuración.
+- **Panel del barbero:** al entrar va a su panel con Agenda, Citas y Ventas (iguales a las del dueño), Configuración (su WhatsApp), Ver sitio, Mi cuenta y Cerrar sesión. Ve la agenda de toda la barbería para poder atender si el dueño no está.
+- **Lo que el barbero NO puede:** ver finanzas, estadísticas, inventario, clientes, servicios ni configuración del negocio; borrar citas; registrar ventas de otros días; ver facturas de días anteriores.
 - **WhatsApp de las reservas:** cuando alguien reserva con un barbero que tiene WhatsApp, el mensaje le llega a él. Sin número, le llega a la barbería.
 - **Quitar el acceso:** Panel → Clientes → la persona → Rol: Cliente.
 
