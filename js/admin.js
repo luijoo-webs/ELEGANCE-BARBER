@@ -3,8 +3,8 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday, ymd, toIso, hhmm,
   fmtTime, fmtDate, fmtDay, fmtDateTime, minutes, fromMinutes, shortTime, STATUS, statusBadge, friendly, toast, loader, emptyState,
   formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin, isBarber, extrasText, extrasTotal, prodMini
-} from "./core.js?v=20261124a";
-import { svcPhoto } from "./public.js?v=20261124a";
+} from "./core.js?v=20261124b";
+import { svcPhoto } from "./public.js?v=20261124b";
 
 // El tercer dato abre un grupo en el menú.
 const SECTIONS = [
@@ -15,6 +15,7 @@ const SECTIONS = [
 ];
 // El barbero ve solo estas secciones; sus cambios van por staff_* (el servidor verifica que sea barbero).
 const STAFF_SECTIONS = [["agenda", "Agenda", "Hoy"], ["citas", "Citas"], ["ventas", "Ventas", "Caja"], ["configuracion", "Configuración"]];
+const myBarber = () => isAdmin() ? "" : State.profile.barber_id;   // el barbero solo ve lo suyo (también lo exige el servidor)
 const rpcN = (n) => isAdmin() ? n : n.replace(/^admin_/, "staff_");
 const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 const q = async (p) => { const { data, error } = await p; if (error) throw error; return data; };
@@ -254,7 +255,7 @@ async function vAgenda(_, query) {
   const from = mode === "semana" ? mondayOf(date) : date;
   const days = mode === "semana" ? 7 : 1;
   const to = addDays(from, days - 1);
-  const barberF = query.barbero || "";
+  const barberF = myBarber() || query.barbero || "";
   const statusF = query.estado || "activas";
   const barbers = State.barbers.filter((b) => b.active && !b.deleted_at && (!barberF || b.id === barberF));
   const rs = toIso(from, "00:00"), re = toIso(addDays(to, 1), "00:00");
@@ -326,7 +327,7 @@ async function vAgenda(_, query) {
       <strong>${mode === "dia" ? cap(fmtDay(date, { weekday: "long", day: "numeric", month: "long", year: "numeric" })) : `${fmtDay(from, { day: "numeric", month: "short" })} – ${fmtDay(to, { day: "numeric", month: "short", year: "numeric" })}`}</strong>
       <input type="date" id="agDate" value="${date}" aria-label="Ir a fecha">
       <div class="seg" role="group" aria-label="Vista"><a href="${hrefWith("#/admin/agenda", query, { vista: "dia" })}" class="${mode === "dia" ? "is-on" : ""}">Día</a><a href="${hrefWith("#/admin/agenda", query, { vista: "semana" })}" class="${mode === "semana" ? "is-on" : ""}">Semana</a></div>
-      <select id="agBarber" aria-label="Barbero"><option value="">Todos los barberos</option>${State.barbers.filter((b) => b.active && !b.deleted_at).map((b) => `<option value="${b.id}" ${b.id === barberF ? "selected" : ""}>${esc(b.name)}</option>`).join("")}</select>
+      ${isAdmin() ? `<select id="agBarber" aria-label="Barbero"><option value="">Todos los barberos</option>${State.barbers.filter((b) => b.active && !b.deleted_at).map((b) => `<option value="${b.id}" ${b.id === barberF ? "selected" : ""}>${esc(b.name)}</option>`).join("")}</select>` : ""}
       <select id="agStatus" aria-label="Estado">${[["activas", "Activas"], ["pendiente", "Pendientes"], ["confirmada", "Confirmadas"], ["en_proceso", "En silla"], ["completada", "Completadas"], ["no_asistio", "No vinieron"], ["cancelada", "Canceladas"], ["todas", "Todas"]].map(([k, v]) => `<option value="${k}" ${k === statusF ? "selected" : ""}>${v}</option>`).join("")}</select>
     </div>
     <div class="agenda"><div class="agenda__grid" style="grid-template-columns:56px repeat(${cols.length}, minmax(${mode === "dia" ? 170 : 130}px, 1fr))">
@@ -365,7 +366,7 @@ const KIND = { cierre: "Cierre", festivo: "Festivo", vacaciones: "Vacaciones", b
 /* Crear o reprogramar una cita (valida en el servidor: horario, bloqueos y solapamientos). */
 function apptEditor({ appt = null, date = todayYmd(), time = "", barberId = "", clientId = null, clientName = "", walkName = "", walkPhone = "" } = {}) {
   const services = State.services.filter((s) => !s.deleted_at && (s.active || s.id === appt?.service_id));
-  const barbers = State.barbers.filter((b) => b.active && !b.deleted_at);
+  const barbers = State.barbers.filter((b) => b.active && !b.deleted_at && (!myBarber() || b.id === myBarber()));
   let client = appt ? { id: appt.client_id, name: appt.client_name } : clientId ? { id: clientId, name: clientName } : null;
   const d0 = appt ? ymd(new Date(appt.starts_at)) : date, t0 = appt ? hhmm(appt.starts_at) : time;
   const m = modal(`<h2 class="modal__t">${appt ? "Reprogramar / editar cita" : "Nueva cita"}</h2>
@@ -502,6 +503,7 @@ function askText(title, label) {
 
 /* Bloqueos / cierres / vacaciones. barberId vacío = todo el negocio. Avisa si hay citas en el rango. */
 function blockEditor({ date = todayYmd(), barberId = "", fixedBarber = false, kind = "bloqueo", early = false } = {}) {
+  if (myBarber()) { barberId = myBarber(); fixedBarber = true; }
   const m = modal(`<h2 class="modal__t">${fixedBarber ? "Ausencia o vacaciones" : "Bloquear horario / cierre"}</h2>
     <form class="form" id="blkForm" novalidate>
       ${fixedBarber ? `<input type="hidden" name="barber" value="${barberId}">` : `<label class="field"><span>Aplica a</span><select name="barber"><option value="">Todo el negocio (nadie puede reservar)</option>${State.barbers.filter((b) => !b.deleted_at).map((b) => `<option value="${b.id}" ${b.id === barberId ? "selected" : ""}>${esc(b.name)}</option>`).join("")}</select></label>`}
@@ -554,7 +556,7 @@ async function vCitas(_, query) {
   if (tab === "proximas") qa = upcoming(qa);
   else if (tab === "sincerrar") qa = unclosed(qa);
   else if (tab !== "todas") qa = qa.eq("status", tab);
-  if (query.barbero) qa = qa.eq("barber_id", query.barbero);
+  if (myBarber() || query.barbero) qa = qa.eq("barber_id", myBarber() || query.barbero);
   if (query.desde) qa = qa.gte("starts_at", toIso(query.desde, "00:00"));
   if (query.hasta) qa = qa.lt("starts_at", toIso(addDays(query.hasta, 1), "00:00"));
   if (query.q && like(query.q)) { const t = like(query.q); qa = qa.or(`client_name.ilike.%${t}%,client_phone.ilike.%${t}%,client_email.ilike.%${t}%,service_name.ilike.%${t}%`); }
@@ -577,7 +579,7 @@ async function vCitas(_, query) {
     <form class="toolbar" id="fForm">
       <input type="hidden" name="estado" value="${esc(query.estado || "")}">
       <input class="grow" type="search" name="q" value="${esc(query.q || "")}" placeholder="Buscar cliente, celular, correo o servicio">
-      <select name="barbero" aria-label="Barbero"><option value="">Todos los barberos</option>${State.barbers.filter((b) => !b.deleted_at).map((b) => `<option value="${b.id}" ${b.id === query.barbero ? "selected" : ""}>${esc(b.name)}</option>`).join("")}</select>
+      ${isAdmin() ? `<select name="barbero" aria-label="Barbero"><option value="">Todos los barberos</option>${State.barbers.filter((b) => !b.deleted_at).map((b) => `<option value="${b.id}" ${b.id === query.barbero ? "selected" : ""}>${esc(b.name)}</option>`).join("")}</select>` : ""}
       <input type="date" name="desde" value="${esc(query.desde || "")}" aria-label="Desde"><input type="date" name="hasta" value="${esc(query.hasta || "")}" aria-label="Hasta">
       <button class="btn btn--sm" type="submit">Filtrar</button>${filtered ? `<a class="btn btn--sm btn--ghost" href="${hrefWith("#/admin/citas", {}, { estado: query.estado })}">Limpiar</a>` : ""}
     </form>

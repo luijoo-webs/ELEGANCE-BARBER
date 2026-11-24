@@ -588,4 +588,30 @@ console.log("Migración 19 (panel del barbero)");
   ok("barbero: agenda, citas y ventas iguales al admin por staff_*; no borra, no vende otro día, no ve finanzas ni facturas viejas; cambia solo su WhatsApp");
 }
 
+console.log("Migración 20 (cada barbero solo lo suyo)");
+{
+  const m20 = readFileSync(new URL("../supabase/20_barbero_solo_suyas.sql", import.meta.url), "utf8");
+  await db.exec(m20); await db.exec(m20);
+  const W = "00000000-0000-0000-0000-0000000000c1";
+  const [{ barber_id: mine }] = (await db.query(`select barber_id from profiles where id = $1`, [W])).rows;
+  const seen = await as(W, `select distinct barber_id from appointments`);
+  assert.ok(seen.length > 0 && seen.every((r) => r.barber_id === mine), "solo ve sus citas");
+  const offs = await as(W, `select distinct barber_id from time_off`);
+  assert.ok(offs.every((r) => r.barber_id === null || r.barber_id === mine), "solo ve sus bloqueos y los del negocio");
+  const [{ id: otherB }] = (await db.query(`select id from barbers where id <> $1 and deleted_at is null limit 1`, [mine])).rows;
+  const [{ id: sv }] = (await db.query(`select id from services where active and deleted_at is null limit 1`)).rows;
+  const [{ slot_start }] = await as(null, `select slot_start from get_availability($1, $2, ((now() at time zone 'America/Bogota')::date + 21), 7) limit 1`, [sv, otherB]);
+  const [{ id: ajena }] = await as(U.admin, `select admin_save_appointment(null, null, 'Cliente Ajeno', '3001112233', $1, $2, $3) id`, [sv, otherB, slot_start]);
+  await fails(as(W, `select staff_set_status($1, 'cancelada')`, [ajena]), "NO_AUTORIZADO");
+  await fails(as(W, `select staff_set_notes($1, 'x')`, [ajena]), "NO_AUTORIZADO");
+  await fails(as(W, `select staff_save_appointment(null, null, 'X', '3001112233', $1, $2, $3)`, [sv, otherB, slot_start]), "NO_AUTORIZADO");
+  await fails(as(W, `select staff_save_appointment($1, null, 'X', '3001112233', $2, $3, $4)`, [ajena, sv, mine, slot_start]), "NO_AUTORIZADO");
+  await fails(as(W, `insert into time_off(barber_id, starts_at, ends_at, kind) values ($1, now() + interval '40 days', now() + interval '40 days 1 hour', 'bloqueo')`, [otherB]));
+  await fails(as(W, `insert into time_off(barber_id, starts_at, ends_at, kind) values (null, now() + interval '40 days', now() + interval '40 days 1 hour', 'cierre')`));
+  assert.equal((await db.query(`select status from appointments where id = $1`, [ajena])).rows[0].status, "confirmada");
+  const [{ id: propia }] = await as(W, `select id from appointments where barber_id = $1 and status in ('pendiente','confirmada') limit 1`, [mine]);
+  await as(W, `select staff_set_notes($1, 'Sigue funcionando')`, [propia]);
+  ok("barbero: solo ve y maneja sus citas y bloqueos; no toca los de otro barbero ni los cierres del negocio");
+}
+
 console.log(`\n${passed} pruebas OK`);
