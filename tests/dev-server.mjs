@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PORT = 5180;
 const ADMIN = { email: "admin@elegance.test", password: "DevAdmin2026" };   // cuenta local de prueba (solo PGlite)
+const BARBER = { email: "barbero@elegance.test", password: "DevBarbero2026" };   // barbero local de prueba (solo PGlite)
 
 const db = new PGlite({ extensions: { btree_gist } });
 await db.exec(`
@@ -229,5 +230,12 @@ createServer(async (req, res) => {
     -- Servicios, barberos y horario general vienen de 04_negocio_real.sql.
     update barbers set name = name || ' (prueba)';
   `);
+  // Barbero de prueba que alquila el puesto, con dos ingresos para ver "Mis finanzas".
+  const barber = await signUp(BARBER.email, BARBER.password, { full_name: "Barbero Prueba" });
+  await db.query(`update profiles set role='barber', barber_id=(select id from barbers order by sort_order, name limit 1) where id=$1`, [barber.id]);
+  await db.exec(`update barbers set rents_chair = true where id = (select id from barbers order by sort_order, name limit 1);
+    insert into barber_income (barber_id, description, amount, entry_date, method)
+    select id, d, v, (now() at time zone 'America/Bogota')::date - k, m from (select id from barbers order by sort_order, name limit 1) b,
+      (values ('Cita: Corte de cabello — Cliente A', 25000, 0, 'Efectivo'), ('Venta: Barba', 12000, 2, 'Nequi')) x(d, v, k, m);`);
   console.log(`Servidor de desarrollo: http://127.0.0.1:${PORT}  ·  admin local: ${ADMIN.email} (contraseña en este archivo)`);
 });

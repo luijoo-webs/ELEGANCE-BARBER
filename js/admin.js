@@ -3,8 +3,8 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday, ymd, toIso, hhmm,
   fmtTime, fmtDate, fmtDay, fmtDateTime, minutes, fromMinutes, shortTime, STATUS, statusBadge, friendly, toast, loader, emptyState,
   formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin, isBarber, extrasText, extrasTotal, prodMini
-} from "./core.js?v=20261125a";
-import { svcPhoto } from "./public.js?v=20261125a";
+} from "./core.js?v=20261125b";
+import { svcPhoto } from "./public.js?v=20261125b";
 
 // El tercer dato abre un grupo en el menú.
 const SECTIONS = [
@@ -14,7 +14,7 @@ const SECTIONS = [
   ["estadisticas", "Estadísticas", "Análisis"], ["configuracion", "Configuración"]
 ];
 // El barbero ve solo estas secciones; sus cambios van por staff_* (el servidor verifica que sea barbero).
-const STAFF_SECTIONS = [["agenda", "Agenda", "Hoy"], ["citas", "Citas"], ["ventas", "Ventas", "Caja"], ["configuracion", "Configuración"]];
+const STAFF_SECTIONS = [["agenda", "Agenda", "Hoy"], ["citas", "Citas"], ["ventas", "Ventas", "Caja"], ["estadisticas", "Finanzas"], ["configuracion", "Configuración"]];
 const myBarber = () => isAdmin() ? "" : State.profile.barber_id;   // el barbero solo ve lo suyo (también lo exige el servidor)
 const rpcN = (n) => isAdmin() ? n : n.replace(/^admin_/, "staff_");
 const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
@@ -721,7 +721,7 @@ function barberEditor(b = null) {
       <label class="field"><span>Orden</span><input type="number" name="sort_order" value="${b?.sort_order ?? 0}"></label>
       ${imgField("photo", b?.photo_url, "Fotografía")}
       <label class="check"><input type="checkbox" name="active" ${b?.active === false ? "" : "checked"}> Activo (recibe reservas)</label>
-      <label class="check"><input type="checkbox" name="rents_chair" ${b?.rents_chair ? "checked" : ""}> Alquila el puesto (sus cortes no entran en las finanzas de la barbería; los ve en su panel)</label>
+      <label class="check"><input type="checkbox" name="rents_chair" ${(b ? b.rents_chair : true) ? "checked" : ""}> Alquila el puesto (sus cortes no entran en las finanzas de la barbería; los ve en su panel)</label>
       <button class="btn btn--block" type="submit" data-busy="Guardando…">Guardar</button><p class="form-msg" id="barMsg" role="alert"></p>
       ${b ? `<button class="btn btn--ghost btn--danger-text btn--block" type="button" id="delBarber">Eliminar barbero</button>` : ""}
     </form>`, { wide: true });
@@ -1094,7 +1094,8 @@ async function vEstadisticas(_, query) {
   const from = p === "anterior" ? prev : p === "rango" ? query.desde : monthStart(today);
   const to = p === "anterior" ? monthEnd(prev) : p === "rango" ? (query.hasta || today) : monthEnd(today);
   if (!from || !to || to < from) throw new Error("Rango de fechas inválido.");
-  const [rows, st] = await Promise.all([
+  const mine = !isAdmin();
+  const [rows, st] = mine ? await myFinance(from, to) : await Promise.all([
     q(sb.from("finance_entries").select("*").gte("entry_date", from).lte("entry_date", to).order("entry_date", { ascending: false }).order("created_at", { ascending: false })),
     q(sb.rpc("admin_stats", { p_from: from, p_to: to })).catch(() => null)   // falla si el rango supera 1 año
   ]);
@@ -1115,7 +1116,7 @@ async function vEstadisticas(_, query) {
   const list = query.tipo ? of(query.tipo) : rows;
   const label = `${fmtDay(from, { day: "numeric", month: "short", year: "numeric" })} – ${fmtDay(to, { day: "numeric", month: "short", year: "numeric" })}`;
 
-  const html = shell("estadisticas", "Estadísticas", `<button class="btn btn--sm btn--ghost" type="button" data-new="ingreso">Registrar ingreso</button><button class="btn btn--sm" type="button" data-new="gasto">Registrar gasto</button>`, `
+  const html = shell("estadisticas", mine ? "Mis finanzas" : "Estadísticas", mine ? "" : `<button class="btn btn--sm btn--ghost" type="button" data-new="ingreso">Registrar ingreso</button><button class="btn btn--sm" type="button" data-new="gasto">Registrar gasto</button>`, `
     <form class="toolbar" id="perForm">
       <div class="seg" role="group" aria-label="Periodo">${[["mes", "Mes actual"], ["anterior", "Mes anterior"]].map(([k, v]) => `<a href="#/admin/estadisticas?p=${k}" class="${p === k ? "is-on" : ""}">${v}</a>`).join("")}</div>
       <input type="date" name="desde" value="${from}" aria-label="Desde"><input type="date" name="hasta" value="${to}" aria-label="Hasta">
@@ -1124,8 +1125,8 @@ async function vEstadisticas(_, query) {
     </form>
     <div class="kpis">
       <div class="kpi"><span>Ingresos</span><strong>${money(ingresos)}</strong><small>${of("ingreso").length} registro(s)</small></div>
-      <div class="kpi"><span>Gastos</span><strong>${money(gastos)}</strong><small>${of("gasto").length} registro(s)</small></div>
-      <div class="kpi"><span>Balance neto</span><strong>${signed(ingresos - gastos)}</strong><small>ingresos − gastos</small></div>
+      ${mine ? `<div class="kpi"><span>Promedio por servicio</span><strong>${money(of("ingreso").length ? ingresos / of("ingreso").length : 0)}</strong><small>ingresos ÷ registros</small></div>` : `<div class="kpi"><span>Gastos</span><strong>${money(gastos)}</strong><small>${of("gasto").length} registro(s)</small></div>
+      <div class="kpi"><span>Balance neto</span><strong>${signed(ingresos - gastos)}</strong><small>ingresos − gastos</small></div>`}
       <div class="kpi"><span>Citas completadas</span><strong>${st ? st.completadas : "—"}</strong><small>${st ? `${st.total - st.canceladas - st.completadas - st.no_asistio} por atender · ${st.no_asistio} no vinieron · ${st.canceladas} canceladas` : "rango muy largo"}</small></div>
     </div>
     <div class="card chart-card"><h2>Ingresos ${byMonth ? "por mes" : "por día"}</h2>
@@ -1135,17 +1136,17 @@ async function vEstadisticas(_, query) {
     <div class="cards-3">
       <div class="card"><h2>Ingresos por origen</h2>${ingresos ? moneyBars(sumBy(of("ingreso"), (r) => r.category)) : `<p class="muted">Sin ingresos en el periodo.</p>`}</div>
       <div class="card"><h2>Medios de pago</h2>${ingresos ? moneyBars(sumBy(of("ingreso"), (r) => r.method || "Sin indicar")) : `<p class="muted">Sin ingresos en el periodo.</p>`}</div>
-      <div class="card"><h2>Gastos por categoría</h2>${byCat.length ? moneyBars(byCat) : `<p class="muted">Sin gastos en el periodo.</p>`}</div>
+      ${mine ? "" : `<div class="card"><h2>Gastos por categoría</h2>${byCat.length ? moneyBars(byCat) : `<p class="muted">Sin gastos en el periodo.</p>`}</div>`}
       <div class="card"><h2>Servicios más pedidos</h2>${st?.por_servicio?.length ? countBars(st.por_servicio) : `<p class="muted">Sin citas en el periodo.</p>`}</div>
-      <div class="card"><h2>Citas por barbero</h2>${st?.por_barbero?.length ? countBars(st.por_barbero) : `<p class="muted">Sin citas en el periodo.</p>`}</div>
+      ${mine ? "" : `<div class="card"><h2>Citas por barbero</h2>${st?.por_barbero?.length ? countBars(st.por_barbero) : `<p class="muted">Sin citas en el periodo.</p>`}</div>`}
     </div>
-    <div class="toolbar"><div class="seg" role="group" aria-label="Tipo">${[["", "Todos"], ["gasto", "Gastos"], ["ingreso", "Ingresos"]].map(([k, v]) => `<a href="${hrefWith("#/admin/estadisticas", query, { tipo: k })}" class="${(query.tipo || "") === k ? "is-on" : ""}">${v}</a>`).join("")}</div></div>
+    ${mine ? "" : `<div class="toolbar"><div class="seg" role="group" aria-label="Tipo">${[["", "Todos"], ["gasto", "Gastos"], ["ingreso", "Ingresos"]].map(([k, v]) => `<a href="${hrefWith("#/admin/estadisticas", query, { tipo: k })}" class="${(query.tipo || "") === k ? "is-on" : ""}">${v}</a>`).join("")}</div></div>`}
     ${list.length ? `<div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Categoría</th><th class="num">Valor</th><th></th></tr></thead><tbody>
       ${list.map((r) => `<tr><td>${esc(fmtDay(r.entry_date, { day: "numeric", month: "short", year: "numeric" }))}</td><td><span class="badge ${r.kind === "gasto" ? "badge--cancelada" : "badge--confirmada"}">${r.kind === "gasto" ? "Gasto" : "Ingreso"}</span></td>
         <td>${esc(r.description)}${r.notes ? `<br><span class="muted">${esc(r.notes)}</span>` : ""}</td><td>${esc(r.category)}${r.method ? `<br><span class="muted">${esc(r.method)}</span>` : ""}</td>
         <td class="num">${r.kind === "gasto" ? "−" : ""}${money(r.amount)}</td>
-        <td class="nowrap"><button class="btn btn--sm btn--ghost" data-edit-fin="${r.id}">Editar</button> <button class="btn btn--sm btn--ghost btn--danger-text" data-del-fin="${r.id}">Eliminar</button></td></tr>`).join("")}
-    </tbody></table></div>` : emptyState("No hay movimientos en este periodo.", "Registra los gastos del local con “Registrar gasto”.")}`);
+        <td class="nowrap">${mine ? "" : `<button class="btn btn--sm btn--ghost" data-edit-fin="${r.id}">Editar</button> <button class="btn btn--sm btn--ghost btn--danger-text" data-del-fin="${r.id}">Eliminar</button>`}</td></tr>`).join("")}
+    </tbody></table></div>` : emptyState("No hay movimientos en este periodo.", mine ? "Tus cortes completados y tus ventas aparecen aquí solos." : "Registra los gastos del local con “Registrar gasto”.")}`);
 
   const mount = () => {
     $("#perForm").addEventListener("submit", (e) => { e.preventDefault(); const f = formData(e.target); if (f.desde && f.hasta) go(`#/admin/estadisticas?p=rango&desde=${f.desde}&hasta=${f.hasta}`); });
@@ -1159,6 +1160,20 @@ async function vEstadisticas(_, query) {
     });
   };
   return { html, mount };
+}
+
+// Finanzas del barbero: sus ingresos (si alquila el puesto) y el conteo de SUS citas (RLS solo deja ver las suyas).
+async function myFinance(from, to) {
+  const [inc, ap] = await Promise.all([
+    q(sb.from("barber_income").select("*").eq("barber_id", myBarber()).gte("entry_date", from).lte("entry_date", to).order("entry_date", { ascending: false }).order("created_at", { ascending: false })),
+    q(sb.from("appointments").select("status, service_name, services").eq("barber_id", myBarber()).gte("starts_at", toIso(from, "00:00")).lt("starts_at", toIso(addDays(to, 1), "00:00")))
+  ]);
+  const rows = inc.map((r) => ({ ...r, kind: "ingreso", category: r.appointment_id ? "Citas" : "Ventas en caja" }));
+  const n = (k) => ap.filter((a) => a.status === k).length, svc = {};
+  ap.filter((a) => !["cancelada", "no_asistio"].includes(a.status)).forEach((a) => (a.services?.length ? a.services.map((x) => x.n) : [a.service_name]).forEach((k) => (svc[k] = (svc[k] || 0) + 1)));
+  const st = { total: ap.length, completadas: n("completada"), canceladas: n("cancelada"), no_asistio: n("no_asistio"),
+    por_servicio: Object.entries(svc).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([nombre, c]) => ({ nombre, n: c })) };
+  return [rows, st];
 }
 
 function financeEditor(r = {}) {
