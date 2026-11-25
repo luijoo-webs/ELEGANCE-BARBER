@@ -614,4 +614,48 @@ console.log("Migración 20 (cada barbero solo lo suyo)");
   ok("barbero: solo ve y maneja sus citas y bloqueos; no toca los de otro barbero ni los cierres del negocio");
 }
 
+console.log("Migración 21 (barbero que alquila el puesto)");
+{
+  const m21 = readFileSync(new URL("../supabase/21_barbero_alquila.sql", import.meta.url), "utf8");
+  await db.exec(m21); await db.exec(m21);
+  const W = "00000000-0000-0000-0000-0000000000c1";
+  const [{ barber_id: mine }] = (await db.query(`select barber_id from profiles where id = $1`, [W])).rows;
+  const [{ id: otherB }] = (await db.query(`select id from barbers where id <> $1 and deleted_at is null limit 1`, [mine])).rows;
+  await db.query(`update barbers set rents_chair = true where id = $1`, [mine]);
+  const [{ name: myName }] = (await db.query(`select name from barbers where id = $1`, [mine])).rows;
+  const today = (await db.query(`select (now() at time zone 'America/Bogota')::date::text d`)).rows[0].d;
+  const fin = async () => Number((await db.query(`select coalesce(sum(amount),0) s from finance_entries`)).rows[0].s);
+  const inc = async () => Number((await db.query(`select coalesce(sum(amount),0) s from barber_income where barber_id = $1`, [mine])).rows[0].s);
+  // Cita del barbero que alquila: el servicio va a sus ingresos, los adicionales a la barbería.
+  const [{ id: sv }] = (await db.query(`select id from services where active and deleted_at is null and price > 0 limit 1`)).rows;
+  const [{ slot_start }] = await as(null, `select slot_start from get_availability($1, $2, ((now() at time zone 'America/Bogota')::date + 22), 7) limit 1`, [sv, mine]);
+  const [{ id: ap }] = await as(U.admin, `select admin_save_appointment(null, null, 'Cliente Renta', '3009998877', $1, $2, $3) id`, [sv, mine, slot_start]);
+  await db.query(`update appointments set extras = '[{"n":"Gel","q":1,"p":5000}]'::jsonb where id = $1`, [ap]);
+  const [{ price }] = (await db.query(`select price from appointments where id = $1`, [ap])).rows;
+  let f0 = await fin(), i0 = await inc();
+  await as(U.admin, `select admin_set_status($1, 'en_proceso')`, [ap]);
+  await as(U.admin, `select admin_set_status($1, 'completada')`, [ap]);
+  assert.equal(await inc() - i0, Number(price), "el corte va a sus ingresos");
+  assert.equal(await fin() - f0, 5000, "a la barbería solo entra el producto");
+  await as(U.admin, `select admin_set_status($1, 'confirmada')`, [ap]);
+  assert.equal(await inc(), i0, "deshacer quita su ingreso"); assert.equal(await fin(), f0);
+  // Venta en caja desde su panel y desde el dueño eligiéndolo en "Atendió".
+  f0 = await fin(); i0 = await inc();
+  await as(W, `select staff_sale('[{"n":"Corte","q":1,"p":20000,"svc":true},{"n":"Agua","q":1,"p":3000}]'::jsonb, 'Efectivo', $1::date, $2, 'Cliente')`, [today, myName]);
+  await as(U.admin, `select admin_sale('[{"n":"Barba","q":1,"p":12000,"svc":true}]'::jsonb, 'Nequi', $1::date, $2)`, [today, myName]);
+  assert.equal(await inc() - i0, 32000, "sus servicios vendidos van a sus ingresos");
+  assert.equal(await fin() - f0, 3000, "solo el producto entra en las finanzas");
+  // Otro barbero (no alquila): todo sigue entrando en las finanzas.
+  const [{ name: otherName }] = (await db.query(`select name from barbers where id = $1`, [otherB])).rows;
+  f0 = await fin();
+  await as(U.admin, `select admin_sale('[{"n":"Corte","q":1,"p":20000,"svc":true}]'::jsonb, 'Efectivo', $1::date, $2)`, [today, otherName]);
+  assert.equal(await fin() - f0, 20000);
+  // Privacidad: él ve sus ingresos; un cliente no; no puede escribir directo.
+  assert.ok((await as(W, `select count(*)::int n from barber_income`))[0].n > 0);
+  assert.equal((await as(U.ana, `select count(*)::int n from barber_income`))[0].n, 0);
+  await fails(as(W, `insert into barber_income(barber_id, description, amount, entry_date) values ($1, 'x', 1, current_date)`, [mine]));
+  await db.query(`update barbers set rents_chair = false where id = $1`, [mine]);
+  ok("barbero que alquila: sus cortes van a sus ingresos (no a la barbería), los productos sí a la barbería; solo él y el dueño los ven");
+}
+
 console.log(`\n${passed} pruebas OK`);

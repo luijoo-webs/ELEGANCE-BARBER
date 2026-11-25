@@ -3,8 +3,8 @@ import {
   sb, State, $, $$, esc, safeUrl, money, priceLabel, durLabel, DAYS, DAYS_SHORT, todayYmd, addDays, mondayOf, weekday, ymd, toIso, hhmm,
   fmtTime, fmtDate, fmtDay, fmtDateTime, minutes, fromMinutes, shortTime, STATUS, statusBadge, friendly, toast, loader, emptyState,
   formData, setMsg, busy, modal, confirmDialog, uploadImage, loadPublic, isAdmin, isBarber, extrasText, extrasTotal, prodMini
-} from "./core.js?v=20261124b";
-import { svcPhoto } from "./public.js?v=20261124b";
+} from "./core.js?v=20261125a";
+import { svcPhoto } from "./public.js?v=20261125a";
 
 // El tercer dato abre un grupo en el menú.
 const SECTIONS = [
@@ -721,6 +721,7 @@ function barberEditor(b = null) {
       <label class="field"><span>Orden</span><input type="number" name="sort_order" value="${b?.sort_order ?? 0}"></label>
       ${imgField("photo", b?.photo_url, "Fotografía")}
       <label class="check"><input type="checkbox" name="active" ${b?.active === false ? "" : "checked"}> Activo (recibe reservas)</label>
+      <label class="check"><input type="checkbox" name="rents_chair" ${b?.rents_chair ? "checked" : ""}> Alquila el puesto (sus cortes no entran en las finanzas de la barbería; los ve en su panel)</label>
       <button class="btn btn--block" type="submit" data-busy="Guardando…">Guardar</button><p class="form-msg" id="barMsg" role="alert"></p>
       ${b ? `<button class="btn btn--ghost btn--danger-text btn--block" type="button" id="delBarber">Eliminar barbero</button>` : ""}
     </form>`, { wide: true });
@@ -744,7 +745,7 @@ function barberEditor(b = null) {
           const n = await futureCount();
           if (n && !(await confirmDialog(`${b.name} tiene ${n} cita(s) próximas. Al desactivarlo no recibirá reservas nuevas, pero esas citas siguen activas: reprográmalas o cancélalas en la agenda. ¿Continuar?`, "Desactivar"))) return;
         }
-        const row = { name: f.name.trim(), bio: f.bio.trim() || null, sort_order: Number(f.sort_order) || 0, active: form.active.checked,
+        const row = { name: f.name.trim(), bio: f.bio.trim() || null, sort_order: Number(f.sort_order) || 0, active: form.active.checked, rents_chair: form.rents_chair.checked,
           specialties: f.specialties.split(",").map((x) => x.trim()).filter(Boolean).slice(0, 12),
           whatsapp, photo_url: await imgValue(form, "photo", b?.photo_url, "barberos") };
         const { data: saved, error } = b ? await sb.from("barbers").update(row).eq("id", b.id).select("id").single() : await sb.from("barbers").insert(row).select("id").single();
@@ -1333,8 +1334,12 @@ const SALE_PAY = [["Efectivo", '<rect x="2" y="6" width="20" height="12" rx="2"/
   ["Transferencia", '<path d="M4 8h15l-4-4M20 16H5l4 4"/>'], ["Tarjeta", '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>']];
 async function vVentas() {
   const today = todayYmd();
-  const svcs = State.services.filter((s) => s.active && !s.deleted_at), barbers = State.barbers.filter((b) => b.active && !b.deleted_at);
-  const sales = (await q(sb.from("finance_entries").select("*").eq("kind", "ingreso").eq("entry_date", today).order("created_at", { ascending: false }))).filter((r) => r.description.startsWith("Venta"));
+  const svcs = State.services.filter((s) => s.active && !s.deleted_at), barbers = State.barbers.filter((b) => b.active && !b.deleted_at && (!myBarber() || b.id === myBarber()));
+  const renter = !!myBarber() && !!State.barbers.find((b) => b.id === myBarber())?.rents_chair;
+  const month = today.slice(0, 8) + "01";
+  const mine = renter ? await q(sb.from("barber_income").select("*").eq("barber_id", myBarber()).gte("entry_date", month).order("created_at", { ascending: false })) : [];
+  const sales = renter ? mine.filter((r) => r.entry_date === today)
+    : (await q(sb.from("finance_entries").select("*").eq("kind", "ingreso").eq("entry_date", today).order("created_at", { ascending: false }))).filter((r) => r.description.startsWith("Venta"));
   const dayTotal = sales.reduce((t, r) => t + Number(r.amount), 0);
   const catalog = [
     ...svcs.map((s) => ({ key: `s:${s.id}`, tab: "Servicios", n: s.name, p: s.price == null ? null : Number(s.price), img: svcPhoto(s), svc: true })),
@@ -1343,7 +1348,8 @@ async function vVentas() {
   const tabs = ["Servicios", ...new Set(State.products.filter((p) => p.active).map((p) => p.category))], cart = new Map();
   const html = shell("ventas", "Ventas", "", `
     <div class="pos__today">
-      <div><span>Vendido hoy</span><b>${money(dayTotal)}</b></div>
+      <div><span>${renter ? "Mis ingresos hoy" : "Vendido hoy"}</span><b>${money(dayTotal)}</b></div>
+      ${renter ? `<div><span>Mis ingresos del mes</span><b>${money(mine.reduce((t, r) => t + Number(r.amount), 0))}</b></div>` : ""}
       ${SALE_PAY.map(([m]) => [m, sales.filter((r) => r.method === m).reduce((t, r) => t + Number(r.amount), 0)]).filter(([, v]) => v).map(([m, v]) => `<div><span>${m}</span><b>${money(v)}</b></div>`).join("")}
     </div>
     <div class="pos">
@@ -1353,7 +1359,7 @@ async function vVentas() {
         <div class="tiles">${catalog.map((c) => `<button type="button" class="tile${c.svc ? "" : " tile--pk"}" data-add="${c.key}" data-tab2="${esc(c.tab)}" data-f="${esc(c.n.toLowerCase())}" ${c.tab === "Servicios" ? "" : "hidden"}>
           <span class="tile__pic"><img src="${esc(c.img)}" alt="" loading="lazy"></span><span class="tile__n" hidden></span>
           <span class="tile__name">${esc(c.n)}</span><span class="tile__price">${c.p == null ? "Precio libre" : money(c.p)}${c.stock != null ? ` · ${c.stock ? `quedan ${c.stock}` : "agotado"}` : ""}</span></button>`).join("")}</div>
-        <div class="card pos__hist"><h2>Últimas ventas de hoy</h2>${sales.length ? `<ul>${sales.slice(0, 12).map((r) => `<li><span>${esc(r.description.replace(/^Venta( adicionales)?: /, ""))}${r.notes ? `<small>${esc(r.notes)}</small>` : ""}</span><b>${money(r.amount)}</b></li>`).join("")}</ul><p class="muted small">Para editar o borrar una venta, ve a Estadísticas.</p>` : `<p class="muted">Aún no hay ventas hoy. ¡La primera se registra en segundos!</p>`}</div>
+        <div class="card pos__hist"><h2>${renter ? "Mis cortes y ventas de hoy" : "Últimas ventas de hoy"}</h2>${sales.length ? `<ul>${sales.slice(0, 12).map((r) => `<li><span>${esc(r.description.replace(/^Venta( adicionales)?: /, ""))}${r.notes ? `<small>${esc(r.notes)}</small>` : ""}</span><b>${money(r.amount)}</b></li>`).join("")}</ul>${isAdmin() ? `<p class="muted small">Para editar o borrar una venta, ve a Estadísticas.</p>` : ""}` : `<p class="muted">Aún no hay ventas hoy. ¡La primera se registra en segundos!</p>`}</div>
       </section>
       <aside class="ticket2" id="ticket">
         <h2>Venta actual</h2>
